@@ -26,8 +26,12 @@ def _sanitize_for_excel(df):
     """Sanitize a dataframe so every cell is Excel-safe."""
     safe_df = df.copy()
     for col in safe_df.columns:
-        if str(col).upper() == "CHANGES":
+        col_upper = str(col).upper()
+        if col_upper == "CHANGES":
             safe_df[col] = safe_df[col].apply(_format_changes)
+        elif col_upper == "COMMENTS":
+            # COMMENTS is already a string — just ensure it's clean
+            safe_df[col] = safe_df[col].fillna("").astype(str)
         else:
             safe_df[col] = safe_df[col].apply(
                 lambda v: json.dumps(v, ensure_ascii=False)
@@ -42,9 +46,11 @@ def _col_width(series, col_name, max_width=60, min_width=10):
     header_len = len(str(col_name))
     try:
         content_len = series.astype(str).str.split("\n").str[0].str.len().max()
+        if pd.isna(content_len):
+            content_len = 0
     except Exception:
-        content_len = header_len
-    return min(max(int(content_len or 0), header_len, min_width), max_width)
+        content_len = 0
+    return min(max(int(content_len), header_len, min_width), max_width)
 
 
 def _write_sheet(writer, df, sheet_name, tab_color):
@@ -109,7 +115,8 @@ def _write_sheet(writer, df, sheet_name, tab_color):
         row_bg = alt_row_fmt if r_idx % 2 == 0 else cell_fmt
         for c_idx, col in enumerate(cols):
             val = row[c_idx]
-            use_fmt = changes_fmt if str(col).upper() == "CHANGES" else row_bg
+            col_upper = str(col).upper()
+            use_fmt = changes_fmt if col_upper in ("CHANGES", "COMMENTS") else row_bg
             # Normalise value
             if pd.isna(val) if not isinstance(val, str) else False:
                 val = ""
@@ -117,10 +124,9 @@ def _write_sheet(writer, df, sheet_name, tab_color):
 
     # ── Column widths ──────────────────────────────────────────────────────────
     for c_idx, col in enumerate(cols):
-        if str(col).upper() == "CHANGES":
-            worksheet.set_column(c_idx, c_idx, 55)     # wider for multiline
-        elif str(col).upper() == "COMMENTS":
-            worksheet.set_column(c_idx, c_idx, 50)
+        col_upper = str(col).upper()
+        if col_upper in ("CHANGES", "COMMENTS"):
+            worksheet.set_column(c_idx, c_idx, 60)     # wider for comments
         else:
             w = _col_width(df[col], col)
             worksheet.set_column(c_idx, c_idx, w)
@@ -141,19 +147,21 @@ def _write_sheet(writer, df, sheet_name, tab_color):
     worksheet.set_zoom(90)
 
 
-def export_excel(modified, new, removed):
+def export_excel(nochange, modified, new, removed):
+    """Export 4 DataFrames to a formatted Excel workbook with 4 sheets."""
     output = io.BytesIO()
 
+    safe_nochange = _sanitize_for_excel(nochange)
     safe_modified = _sanitize_for_excel(modified)
     safe_new      = _sanitize_for_excel(new)
     safe_removed  = _sanitize_for_excel(removed)
 
     with pd.ExcelWriter(output, engine="xlsxwriter") as writer:
+        _write_sheet(writer, safe_nochange, "No Change", "#A6A6A6")   # grey
         _write_sheet(writer, safe_modified, "Modified",  "#FFC000")   # amber
         _write_sheet(writer, safe_new,      "New",       "#70AD47")   # green
         _write_sheet(writer, safe_removed,  "Deleted",   "#FF0000")   # red
 
-        # ── Workbook-level properties ──────────────────────────────────────────
         writer.book.set_properties({
             "title":   "Industrial Comparison Report",
             "subject": "Part Comparison Analysis",
