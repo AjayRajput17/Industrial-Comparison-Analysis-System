@@ -37,31 +37,42 @@ authenticator = stauth.Authenticate(
     auto_hash=False,  # passwords are already bcrypt-hashed in secrets.toml
 )
 
-# Render login widget
-try:
-    authenticator.login()
-except Exception as e:
-    st.error(f"Authentication error: {e}")
-
-# ── Check authentication state ─────────────────────────────────────────────────
-if st.session_state.get("authentication_status") is False:
-    st.error("❌ Username or password is incorrect.")
-    st.stop()
-
-if st.session_state.get("authentication_status") is None:
+# If not authenticated, show a centered login page with heading at the top
+if not st.session_state.get("authentication_status"):
     st.markdown(
-        "<h2 style='text-align:center; margin-top: 2rem;'>"
+        "<h1 style='text-align:center; margin-top: 3rem; margin-bottom: 0.5rem;'>"
         "🔧 Industrial Comparison Analysis System"
-        "</h2>",
+        "</h1>",
         unsafe_allow_html=True,
     )
     st.markdown(
-        "<p style='text-align:center; color:#888;'>"
-        "Please log in to access the application."
+        "<p style='text-align:center; color:#888; font-size: 1.1rem; margin-bottom: 2.5rem;'>"
+        "Secure Access Portal"
         "</p>",
         unsafe_allow_html=True,
     )
-    st.stop()
+    
+    # Use columns to center the login form (1 part empty, 1.5 parts form, 1 part empty)
+    _, col_login, _ = st.columns([1, 1.5, 1])
+    
+    with col_login:
+        try:
+            authenticator.login()
+        except Exception as e:
+            st.error(f"Authentication error: {e}")
+            
+        if st.session_state.get("authentication_status") is False:
+            st.error("❌ Username or password is incorrect.")
+            
+    # If still not authenticated after the form (or haven't submitted yet), stop here
+    if not st.session_state.get("authentication_status"):
+        st.stop()
+else:
+    # If already authenticated, we still must call login() so the library validates the cookie on page refresh
+    try:
+        authenticator.login()
+    except Exception as e:
+        pass
 
 # ══════════════════════════════════════════════════════════════════════════════
 # AUTHENTICATED — user has logged in successfully
