@@ -3,10 +3,13 @@ app.py — Streamlit UI for the Industrial Comparison Analysis System.
 
 Two-file upload flow: OLD report + NEW report.
 Composite key matching, rule-based comments, 4 output categories.
+Protected by session-based authentication (streamlit-authenticator).
 """
 
 import streamlit as st
+import streamlit_authenticator as stauth
 import pandas as pd
+from auth.config import get_auth_config
 from modules.ingestion import load_file
 from modules.analysis import analyze_file_structure, normalize_columns
 from modules.comparator import compare_datasets
@@ -16,9 +19,61 @@ from modules.comment_engine import (
 )
 from modules.exporter import export_excel
 
-# ── Page config ────────────────────────────────────────────────────────────────
+# ── Page config (must be the FIRST Streamlit call) ─────────────────────────────
 st.set_page_config(page_title="FCS Analysis", layout="wide")
 
+
+# ══════════════════════════════════════════════════════════════════════════════
+# AUTHENTICATION
+# ══════════════════════════════════════════════════════════════════════════════
+
+auth_config = get_auth_config()
+
+authenticator = stauth.Authenticate(
+    auth_config["credentials"],
+    auth_config["cookie"]["name"],
+    auth_config["cookie"]["key"],
+    auth_config["cookie"]["expiry_days"],
+    auto_hash=False,  # passwords are already bcrypt-hashed in secrets.toml
+)
+
+# Render login widget
+try:
+    authenticator.login()
+except Exception as e:
+    st.error(f"Authentication error: {e}")
+
+# ── Check authentication state ─────────────────────────────────────────────────
+if st.session_state.get("authentication_status") is False:
+    st.error("❌ Username or password is incorrect.")
+    st.stop()
+
+if st.session_state.get("authentication_status") is None:
+    st.markdown(
+        "<h2 style='text-align:center; margin-top: 2rem;'>"
+        "🔧 Industrial Comparison Analysis System"
+        "</h2>",
+        unsafe_allow_html=True,
+    )
+    st.markdown(
+        "<p style='text-align:center; color:#888;'>"
+        "Please log in to access the application."
+        "</p>",
+        unsafe_allow_html=True,
+    )
+    st.stop()
+
+# ══════════════════════════════════════════════════════════════════════════════
+# AUTHENTICATED — user has logged in successfully
+# ══════════════════════════════════════════════════════════════════════════════
+
+# ── Sidebar: welcome message + logout button ──────────────────────────────────
+st.sidebar.markdown(f"### 👤 Welcome, **{st.session_state.get('name')}**")
+st.sidebar.caption(f"Logged in as: `{st.session_state.get('username')}`")
+authenticator.logout("🚪 Logout", "sidebar")
+st.sidebar.divider()
+
+# ── App header ─────────────────────────────────────────────────────────────────
 st.markdown(
     "<h1 style='text-align:center;'>🔧 Industrial Comparison Analysis System</h1>",
     unsafe_allow_html=True,
