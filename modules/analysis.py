@@ -56,7 +56,8 @@ def resolve_column(columns, candidates):
 
 def normalize_columns(df):
     """
-    Normalize all column names: uppercase + strip whitespace.
+    Normalize all column names: uppercase + strip whitespace,
+    and remove any unexpected file-specific prefixes like 'yyyy-mm-dd.COLUMN_NAME'.
 
     Returns
     -------
@@ -68,11 +69,17 @@ def normalize_columns(df):
     new_cols = []
     for col in df.columns:
         normalized = str(col).strip().upper()
+        # Remove prefix if there is a dot like 'PREFIX.COLUMN'
+        if '.' in normalized:
+            normalized = normalized.split('.')[-1].strip()
+            
         column_map[col] = normalized
         new_cols.append(normalized)
 
     cleaned_df = df.copy()
     cleaned_df.columns = new_cols
+   
+
     return cleaned_df, column_map
 
 

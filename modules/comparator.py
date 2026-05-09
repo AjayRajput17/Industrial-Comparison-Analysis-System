@@ -19,7 +19,7 @@ _KEY_CANDIDATES = {
                    "VEHICLE_FAMILY"],
 }
 
-_NULL_ALIASES = frozenset({"", "NAN", "NONE", "NAT", "<NA>", "NULL"})
+_NULL_ALIASES = frozenset({"", "NAN", "NONE", "NAT", "<NA>", "NULL", "_"})
 
 # Columns to NEVER compare (unique per row, irrelevant to part data)
 _SKIP_COMPARE = frozenset({
@@ -68,18 +68,25 @@ def build_composite_key(df):
     parts = []
 
     if my_col:
-        parts.append(df[my_col].astype(str).str.strip().str.upper())
+        s_my = df[my_col].fillna("").astype(str).str.strip().str.upper()
+        s_my = s_my.str.replace(r'\.0$', '', regex=True)
+        parts.append(s_my)
     else:
         parts.append(pd.Series(["_"] * len(df), index=df.index))
 
-    parts.append(df[pn_col].astype(str).str.strip().str.upper())
+    s_pn = df[pn_col].fillna("").astype(str).str.strip().str.upper()
+    s_pn = s_pn.str.replace(r'\.0$', '', regex=True)
+    parts.append(s_pn)
 
     if vf_col:
-        parts.append(df[vf_col].astype(str).str.strip().str.upper())
+        s_vf = df[vf_col].fillna("").astype(str).str.strip().str.upper()
+        s_vf = s_vf.str.replace(r'\.0$', '', regex=True)
+        parts.append(s_vf)
     else:
         parts.append(pd.Series(["_"] * len(df), index=df.index))
 
     df["__KEY__"] = parts[0] + "|" + parts[1] + "|" + parts[2]
+    df["__KEY__"] = df["__KEY__"].fillna("").astype(str)
 
     # Drop rows with effectively null keys
     df = df[~df["__KEY__"].apply(
@@ -102,7 +109,18 @@ def detect_changes(old_row, new_row, compare_cols):
     for col in compare_cols:
         old_val = _safe_str(old_row.get(col, ""))
         new_val = _safe_str(new_row.get(col, ""))
-        if old_val != new_val:
+        
+        is_diff = old_val != new_val
+        
+        # Check if they are numerically equivalent (e.g., "0.0" and "0")
+        if is_diff:
+            try:
+                if float(old_val) == float(new_val):
+                    is_diff = False
+            except ValueError:
+                pass
+                
+        if is_diff:
             changes[col] = f"{old_val} → {new_val}"
     return changes
 
