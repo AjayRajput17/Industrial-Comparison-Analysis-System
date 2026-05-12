@@ -7,10 +7,10 @@ import sys, os
 sys.path.insert(0, os.path.abspath(os.path.dirname(__file__)))
 
 import pandas as pd
-from modules.analysis import analyze_file_structure, normalize_columns
-from modules.comparator import compare_datasets
-from modules.comment_engine import generate_comments_batch, PRIORITY_FIELDS
-from modules.exporter import export_excel
+from preprocessing.analysis import analyze_file_structure, normalize_columns
+from comparison_engine.comparator import compare_datasets
+from comparison_engine.comment_engine import generate_comments_batch, PRIORITY_FIELDS
+from exports.exporter import export_excel
 
 
 def build_test_data():

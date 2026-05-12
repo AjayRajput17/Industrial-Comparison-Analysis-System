@@ -8,7 +8,7 @@ one of: No Change, Modified, New, or Deleted.
 
 import pandas as pd
 import numpy as np
-from modules.analysis import normalize_columns, resolve_column
+from preprocessing.analysis import normalize_columns, resolve_column
 
 
 # ── Column candidates (same as analysis.py) ───────────────────────────────────
