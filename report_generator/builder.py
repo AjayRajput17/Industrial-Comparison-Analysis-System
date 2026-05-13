@@ -3,6 +3,11 @@ from preprocessing.structure_analyzer import detect_header_row, analyze_multilev
 from preprocessing.normalizer import normalize_dataframe_columns
 from utils.rowid_generator import apply_row_ids
 from config.column_mapping import COLUMN_MAPPING
+from validation.deduplication_validator import (
+    detect_exact_duplicates,
+    remove_exact_duplicates,
+    validate_rowid_uniqueness
+)
 
 def extract_target_schema(reference_file_bytes: bytes) -> list:
     """Extracts column sequence directly from the gold template."""
@@ -93,6 +98,18 @@ def build_business_report_from_raw(raw_file_bytes: bytes, reference_file_bytes: 
     # (Because apply_row_ids puts it at the end, so reorder completely)
     final_ordered_columns = [col for col in target_columns if col in df_final.columns]
     df_final = df_final[final_ordered_columns]
+    
+    # 8. Deduplication Engine (Macro Business Rule Alignment)
+    # Detect duplicates
+    dedupe_diags = detect_exact_duplicates(df_final)
+    diagnostics.update(dedupe_diags)
+    
+    # Remove exact duplicates
+    df_final = remove_exact_duplicates(df_final)
+    
+    # Validate uniqueness post-dedupe
+    validation_diags = validate_rowid_uniqueness(df_final)
+    diagnostics.update(validation_diags)
     
     diagnostics["final_report_schema"] = df_final.columns.tolist()
     diagnostics["rows_generated"] = len(df_final)

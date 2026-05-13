@@ -74,6 +74,19 @@ def render():
                         
                 st.divider()
                 st.write("**Row ID Generation Engine:** active")
+                
+                st.divider()
+                st.write(f"**Exact Deduplication Phase (Macro Alignment)**")
+                st.write(f"- Total rows pre-deduplication: **{info.get('total_rows_pre_dedupe', 'N/A')}**")
+                st.write(f"- Exact identical rows removed: **{info.get('exact_duplicates_to_remove', 'N/A')}**")
+                st.write(f"- Unique rows remaining: **{info.get('total_rows_post_dedupe', 'N/A')}**")
+                
+                if info.get('conflicting_rowids_remaining', 0) > 0:
+                    st.warning(info.get('status', 'Warning'))
+                    st.write(f"- Conflicting ROW IDs remaining: **{info.get('conflicting_rowids_remaining')}**")
+                    st.write(f"- Sample conflicting ROW IDs: {info.get('sample_conflicting_rowids')}")
+                else:
+                    st.success(info.get('status', '✅ All ROW IDs are now 100% unique.'))
 
             st.subheader("Preview Business-Ready Data")
             # Show only top rows
