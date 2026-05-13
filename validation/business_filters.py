@@ -2,9 +2,12 @@
 Business Filters Module.
 Applies manager-confirmed filtering rules on the RAW MBOM data
 BEFORE field mapping and deduplication.
+
+OPTIMIZED: Precomputes combined boolean masks and applies single slice.
 """
 
 import pandas as pd
+import numpy as np
 from config.business_rules import (
     VALID_PART_STATUS,
     VALID_TORQUE_SAFETY,
@@ -19,7 +22,6 @@ from config.business_rules import (
 
 def _resolve_column(df, target_path):
     """Find a column in the DataFrame matching the target multi-index path."""
-    # Normalize the target for comparison
     norm_target = tuple(" ".join(str(p).upper().strip().split()) for p in target_path)
     for col in df.columns:
         if isinstance(col, tuple):
@@ -32,95 +34,74 @@ def _resolve_column(df, target_path):
     return None
 
 
-def filter_part_status(df, diagnostics):
-    """Keep only rows where PART STATUS is in VALID_PART_STATUS (e.g. 'R')."""
-    col = _resolve_column(df, RAW_PART_STATUS_PATH)
-    before = len(df)
-
-    if col is not None:
-        mask = df[col].astype(str).str.strip().str.upper().isin(
-            [v.upper() for v in VALID_PART_STATUS]
-        )
-        df = df[mask].reset_index(drop=True)
-        diagnostics["filter_part_status_col"] = str(col)
-    else:
-        diagnostics["filter_part_status_col"] = "NOT FOUND — skipped"
-
-    after = len(df)
-    diagnostics["rows_before_part_status_filter"] = before
-    diagnostics["rows_after_part_status_filter"] = after
-    diagnostics["rows_removed_part_status"] = before - after
-    return df, diagnostics
-
-
-def filter_torque_safety(df, diagnostics):
-    """Keep only rows where TORQUE SAFETY is Y or N (remove blank and '?')."""
-    col = _resolve_column(df, RAW_TORQUE_SAFETY_PATH)
-    before = len(df)
-
-    if col is not None:
-        mask = df[col].astype(str).str.strip().str.upper().isin(
-            [v.upper() for v in VALID_TORQUE_SAFETY]
-        )
-        df = df[mask].reset_index(drop=True)
-        diagnostics["filter_torque_safety_col"] = str(col)
-    else:
-        diagnostics["filter_torque_safety_col"] = "NOT FOUND — skipped"
-
-    after = len(df)
-    diagnostics["rows_before_torque_safety_filter"] = before
-    diagnostics["rows_after_torque_safety_filter"] = after
-    diagnostics["rows_removed_torque_safety"] = before - after
-    return df, diagnostics
-
-
-def filter_trgt(df, diagnostics):
-    """
-    Apply TRGT business filter on RESIDUAL TRGT.
-    Rule: Keep TRGT == 0 OR TRGT >= 5. Remove 0 < TRGT < 5.
-    """
-    col = _resolve_column(df, RAW_TRGT_RESIDUAL_PATH)
-    before = len(df)
-
-    if col is not None:
-        trgt_numeric = pd.to_numeric(df[col], errors="coerce").fillna(0)
-        # Keep: value == 0 OR value >= TORQUE_THRESHOLD
-        # Remove: 0 < value < TORQUE_THRESHOLD
-        mask = (trgt_numeric == 0) | (trgt_numeric >= TORQUE_THRESHOLD)
-        df = df[mask].reset_index(drop=True)
-        diagnostics["filter_trgt_col"] = str(col)
-    else:
-        diagnostics["filter_trgt_col"] = "NOT FOUND — skipped"
-
-    after = len(df)
-    diagnostics["rows_before_trgt_filter"] = before
-    diagnostics["rows_after_trgt_filter"] = after
-    diagnostics["rows_removed_trgt"] = before - after
-    return df, diagnostics
-
-
 def apply_all_business_filters(df, diagnostics=None):
     """
-    Apply all business filters in the correct order.
+    Apply all business filters using precomputed combined mask (single slice).
     Returns the filtered DataFrame and updated diagnostics.
     """
     if diagnostics is None:
         diagnostics = {}
 
-    diagnostics["rows_before_all_filters"] = len(df)
+    total_before = len(df)
+    diagnostics["rows_before_all_filters"] = total_before
 
-    # 1. PART STATUS = R
-    df, diagnostics = filter_part_status(df, diagnostics)
+    # Start with an all-True mask
+    combined_mask = pd.Series(True, index=df.index)
 
-    # 2. TORQUE SAFETY = Y or N
-    df, diagnostics = filter_torque_safety(df, diagnostics)
+    # ── 1. PART STATUS = R ────────────────────────────────────────────────────
+    ps_col = _resolve_column(df, RAW_PART_STATUS_PATH)
+    if ps_col is not None:
+        ps_mask = df[ps_col].astype(str).str.strip().str.upper().isin(
+            [v.upper() for v in VALID_PART_STATUS]
+        )
+        diagnostics["filter_part_status_col"] = str(ps_col)
+        diagnostics["rows_removed_part_status"] = int((~ps_mask).sum())
+        combined_mask = combined_mask & ps_mask
+    else:
+        diagnostics["filter_part_status_col"] = "NOT FOUND — skipped"
+        diagnostics["rows_removed_part_status"] = 0
 
-    # 3. TRGT filter (keep 0, remove 0 < x < 5)
-    df, diagnostics = filter_trgt(df, diagnostics)
+    diagnostics["rows_before_part_status_filter"] = total_before
+    diagnostics["rows_after_part_status_filter"] = int(combined_mask.sum())
+
+    # ── 2. TORQUE SAFETY = Y or N ────────────────────────────────────────────
+    ts_col = _resolve_column(df, RAW_TORQUE_SAFETY_PATH)
+    rows_before_ts = int(combined_mask.sum())
+    if ts_col is not None:
+        ts_mask = df[ts_col].astype(str).str.strip().str.upper().isin(
+            [v.upper() for v in VALID_TORQUE_SAFETY]
+        )
+        diagnostics["filter_torque_safety_col"] = str(ts_col)
+        # Count removals only among rows that survived previous filter
+        diagnostics["rows_removed_torque_safety"] = int((combined_mask & ~ts_mask).sum())
+        combined_mask = combined_mask & ts_mask
+    else:
+        diagnostics["filter_torque_safety_col"] = "NOT FOUND — skipped"
+        diagnostics["rows_removed_torque_safety"] = 0
+
+    diagnostics["rows_before_torque_safety_filter"] = rows_before_ts
+    diagnostics["rows_after_torque_safety_filter"] = int(combined_mask.sum())
+
+    # ── 3. TRGT filter (keep 0 and ≥5, remove 0 < x < 5) ────────────────────
+    trgt_col = _resolve_column(df, RAW_TRGT_RESIDUAL_PATH)
+    rows_before_trgt = int(combined_mask.sum())
+    if trgt_col is not None:
+        trgt_numeric = pd.to_numeric(df[trgt_col], errors="coerce").fillna(0)
+        trgt_mask = (trgt_numeric == 0) | (trgt_numeric >= TORQUE_THRESHOLD)
+        diagnostics["filter_trgt_col"] = str(trgt_col)
+        diagnostics["rows_removed_trgt"] = int((combined_mask & ~trgt_mask).sum())
+        combined_mask = combined_mask & trgt_mask
+    else:
+        diagnostics["filter_trgt_col"] = "NOT FOUND — skipped"
+        diagnostics["rows_removed_trgt"] = 0
+
+    diagnostics["rows_before_trgt_filter"] = rows_before_trgt
+    diagnostics["rows_after_trgt_filter"] = int(combined_mask.sum())
+
+    # ── Apply single combined filter ──────────────────────────────────────────
+    df = df[combined_mask].reset_index(drop=True)
 
     diagnostics["rows_after_all_filters"] = len(df)
-    diagnostics["total_rows_filtered_out"] = (
-        diagnostics["rows_before_all_filters"] - diagnostics["rows_after_all_filters"]
-    )
+    diagnostics["total_rows_filtered_out"] = total_before - len(df)
 
     return df, diagnostics

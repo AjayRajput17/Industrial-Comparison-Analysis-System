@@ -12,6 +12,7 @@ PERFORMANCE OPTIMIZATIONS:
   - Single pass over common keys (no repeated groupby lookups)
   - Pre-converted rows to dicts for O(1) field access
   - DEBUG_MODE flag to skip expensive diagnostics in production
+  - Full step-by-step timing instrumentation
 """
 
 import pandas as pd
@@ -19,6 +20,7 @@ import numpy as np
 from preprocessing.analysis import normalize_columns, resolve_column
 from config.comparison_identity import IDENTITY_COLUMNS, IDENTITY_CANDIDATES
 from config.debug_config import DEBUG_MODE
+from utils.performance_timer import PipelineTimer
 
 
 _NULL_ALIASES = frozenset({"", "NAN", "NONE", "NAT", "<NA>", "NULL", "_"})
@@ -128,7 +130,7 @@ def _detect_changes_dict(old_dict, new_dict, compare_cols):
                     continue
             except (ValueError, TypeError):
                 pass
-            changes[col] = f"{old_val} → {new_val}"
+            changes[col] = f"{old_val} \u2192 {new_val}"
     return changes
 
 
@@ -140,10 +142,11 @@ def _build_group_dict(df_keyed):
     groups = {}
     key_col_idx = df_keyed.columns.get_loc("__KEY__")
     columns = list(df_keyed.columns)
+    n_cols = len(columns)
 
     for row_tuple in df_keyed.itertuples(index=False, name=None):
         key = row_tuple[key_col_idx]
-        row_dict = {columns[i]: row_tuple[i] for i in range(len(columns))}
+        row_dict = {columns[i]: row_tuple[i] for i in range(n_cols)}
         if key in groups:
             groups[key].append(row_dict)
         else:
@@ -157,18 +160,21 @@ def compare_datasets(old_df, new_df):
     Compare two DataFrames using 9-column business identity key.
 
     Optimized:
-      - Single groupby → dict conversion per dataset
+      - Single groupby -> dict conversion per dataset
       - Single pass over common keys
       - Pre-converted rows to dicts for O(1) access
       - DEBUG_MODE controls diagnostic verbosity
+      - Full step-by-step timing
 
     Returns
     -------
     (modified_df, new_only_df, deleted_df, nochange_df, comp_diagnostics)
     """
+    timer = PipelineTimer()
     comp_diagnostics = {}
 
     # ── Normalize both ─────────────────────────────────────────────────────────
+    timer.start("Normalization")
     old_norm, _ = normalize_columns(old_df)
     new_norm, _ = normalize_columns(new_df)
 
@@ -178,8 +184,10 @@ def compare_datasets(old_df, new_df):
 
     comp_diagnostics["old_rows_normalized"] = len(old_norm)
     comp_diagnostics["new_rows_normalized"] = len(new_norm)
+    timer.stop("Normalization")
 
     # ── Fix date columns ───────────────────────────────────────────────────────
+    timer.start("Date Normalization")
     for frame in (old_norm, new_norm):
         for col in frame.columns:
             if 'DATE' in col.upper():
@@ -188,19 +196,25 @@ def compare_datasets(old_df, new_df):
                     frame[col] = frame[col].fillna('')
                 except Exception:
                     pass
+    timer.stop("Date Normalization")
 
     # ── Build 9-column business identity keys ──────────────────────────────────
+    timer.start("Identity Key Build")
     old_keyed, old_key_diags = build_business_identity_key(old_norm, collect_debug=DEBUG_MODE)
     new_keyed, new_key_diags = build_business_identity_key(new_norm, collect_debug=DEBUG_MODE)
 
     comp_diagnostics["old_identity"] = old_key_diags
     comp_diagnostics["new_identity"] = new_key_diags
+    timer.stop("Identity Key Build")
 
     # ── Build group dicts ONCE — O(1) lookups for entire comparison ────────────
+    timer.start("Group Dict Build")
     old_groups = _build_group_dict(old_keyed)
     new_groups = _build_group_dict(new_keyed)
+    timer.stop("Group Dict Build")
 
     # ── Set math on unique key sets ────────────────────────────────────────────
+    timer.start("Set Math + Matching")
     old_keys = set(old_groups.keys())
     new_keys = set(new_groups.keys())
 
@@ -256,7 +270,10 @@ def compare_datasets(old_df, new_df):
             row_data = {k: v for k, v in old_row_list[i].items() if k != "__KEY__"}
             extra_deleted_rows.append(row_data)
 
+    timer.stop("Set Math + Matching")
+
     # ── Build output DataFrames ────────────────────────────────────────────────
+    timer.start("Output DataFrame Build")
     modified_df = pd.DataFrame(modified_rows) if modified_rows else pd.DataFrame()
     nochange_df = pd.DataFrame(nochange_rows) if nochange_rows else pd.DataFrame()
 
@@ -275,6 +292,7 @@ def compare_datasets(old_df, new_df):
             deleted_rows.append({k: v for k, v in row_dict.items() if k != "__KEY__"})
     deleted_rows.extend(extra_deleted_rows)
     deleted_df = pd.DataFrame(deleted_rows) if deleted_rows else pd.DataFrame()
+    timer.stop("Output DataFrame Build")
 
     comp_diagnostics["modified_count"] = len(modified_df)
     comp_diagnostics["nochange_count"] = len(nochange_df)
@@ -282,5 +300,8 @@ def compare_datasets(old_df, new_df):
     comp_diagnostics["deleted_count"] = len(deleted_df)
     comp_diagnostics["extra_new_from_common"] = len(extra_new_rows)
     comp_diagnostics["extra_deleted_from_common"] = len(extra_deleted_rows)
+
+    # Attach timing summary
+    comp_diagnostics["timing"] = timer.summary_dict()
 
     return modified_df, new_only_df, deleted_df, nochange_df, comp_diagnostics

@@ -45,13 +45,43 @@ def render():
             st.success("✅ Report Generation Complete!")
 
             # ══════════════════════════════════════════════════════════════
+            # PERFORMANCE TIMING SUMMARY (collapsed)
+            # ══════════════════════════════════════════════════════════════
+            timing = info.get("timing", {})
+            if timing:
+                with st.expander("⏱️ Performance Timing Summary", expanded=False):
+                    total = timing.pop("TOTAL", 0)
+                    # Show steps as a clean table
+                    timing_rows = []
+                    for step, dur in timing.items():
+                        timing_rows.append({"Stage": step, "Duration (sec)": dur})
+                    timing_rows.append({"Stage": "**TOTAL**", "Duration (sec)": total})
+                    st.table(pd.DataFrame(timing_rows))
+                    # Put TOTAL back
+                    timing["TOTAL"] = total
+
+            # ══════════════════════════════════════════════════════════════
             # PIPELINE TRACE DIAGNOSTICS
             # ══════════════════════════════════════════════════════════════
             with st.expander("🔍 Processing Diagnostics & Data Flow Trace", expanded=True):
 
                 # --- Header Detection ---
                 st.markdown("#### 📂 Header Detection")
-                st.write(f"- True Header detected at Row Index: **{info.get('detected_header_row_index', 'N/A')}**")
+
+                # Strategy indicator
+                h_strat = info.get('header_strategy', {})
+                strategy_name = h_strat.get('strategy', 'unknown')
+                if strategy_name == 'fast_path':
+                    st.success("✅ Header Strategy: **Fast Known-Template Load**")
+                    st.write(f"  - Sheet: `{h_strat.get('sheet_name', 'N/A')}`")
+                    st.write(f"  - Header rows: `{h_strat.get('header_rows', 'N/A')}`")
+                    st.write(f"  - Engine: `{h_strat.get('engine', 'N/A')}`")
+                else:
+                    st.warning("⚠️ Header Strategy: **Fallback Dynamic Detection** (slower)")
+                    if h_strat.get('fast_path_error'):
+                        st.write(f"  - Fast path failed: `{h_strat.get('fast_path_error')}`")
+
+                st.write(f"- True Header at Row Index: **{info.get('detected_header_row_index', 'N/A')}**")
                 st.write(f"- Total rows loaded from MBOM: **{info.get('rows_after_header_detection', 'N/A')}**")
                 st.write(f"- Normalized column count: **{info.get('normalized_raw_columns_count', 'N/A')}**")
 

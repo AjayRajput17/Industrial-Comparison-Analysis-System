@@ -117,6 +117,20 @@ def render():
         st.write(f"- Deleted keys: **{comp_diags.get('deleted_key_count')}**")
 
     # ══════════════════════════════════════════════════════════════════════════════
+    # PERFORMANCE TIMING SUMMARY (collapsed)
+    # ══════════════════════════════════════════════════════════════════════════════
+    timing = comp_diags.get("timing", {})
+    if timing:
+        with st.expander("⏱️ Performance Timing Summary", expanded=False):
+            total = timing.pop("TOTAL", 0)
+            timing_rows = []
+            for step, dur in timing.items():
+                timing_rows.append({"Stage": step, "Duration (sec)": dur})
+            timing_rows.append({"Stage": "**TOTAL**", "Duration (sec)": total})
+            st.table(pd.DataFrame(timing_rows))
+            timing["TOTAL"] = total
+
+    # ══════════════════════════════════════════════════════════════════════════════
     # FILTERS (lightweight — no dataframe rendering here)
     # ══════════════════════════════════════════════════════════════════════════════
     st.divider()
