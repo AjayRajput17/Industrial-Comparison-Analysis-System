@@ -46,21 +46,21 @@ def render():
 
 
     # ── Cached heavy functions ────────────────────────────────────────────────────
-    @st.cache_data(show_spinner="Comparing datasets… (this only runs once per file pair)")
+    @st.cache_data(show_spinner="Comparing datasets with 9-column business identity… (this only runs once per file pair)")
     def _cached_compare(old_bytes, old_name, new_bytes, new_name):
         """Cache the entire comparison pipeline by file content."""
         import io
         old_df = pd.read_excel(io.BytesIO(old_bytes))
         new_df = pd.read_excel(io.BytesIO(new_bytes))
-        modified, new_only, deleted, nochange = compare_datasets(old_df, new_df)
-        return old_df, new_df, modified, new_only, deleted, nochange
+        modified, new_only, deleted, nochange, comp_diags = compare_datasets(old_df, new_df)
+        return old_df, new_df, modified, new_only, deleted, nochange, comp_diags
 
 
     # ── Load & compare (cached) ───────────────────────────────────────────────────
     old_bytes = old_file.getvalue()
     new_bytes = new_file.getvalue()
 
-    old_df, new_df, modified, new_only, deleted, nochange = _cached_compare(
+    old_df, new_df, modified, new_only, deleted, nochange, comp_diags = _cached_compare(
         old_bytes, old_file.name, new_bytes, new_file.name
     )
 
@@ -81,6 +81,44 @@ def render():
             st.write("Key columns detected:", new_info["key_columns"])
             if new_info["missing_keys"]:
                 st.warning(f"Missing key columns: {new_info['missing_keys']}")
+
+    # ══════════════════════════════════════════════════════════════════════════════
+    # COMPARISON DIAGNOSTICS
+    # ══════════════════════════════════════════════════════════════════════════════
+    with st.expander("🔬 Comparison Engine Diagnostics", expanded=False):
+        st.markdown("#### 🆔 Business Identity Key (9 columns)")
+
+        old_id = comp_diags.get("old_identity", {})
+        new_id = comp_diags.get("new_identity", {})
+
+        c_old_d, c_new_d = st.columns(2)
+        with c_old_d:
+            st.markdown("**OLD File Identity**")
+            st.write(f"- Resolved columns: `{list(old_id.get('resolved_identity_columns', {}).keys())}`")
+            if old_id.get("missing_identity_columns"):
+                st.warning(f"Missing: {old_id['missing_identity_columns']}")
+            st.write(f"- Rows after key build: **{old_id.get('total_rows_after_key_build', 'N/A')}**")
+            st.write(f"- Duplicate identity keys: **{old_id.get('duplicate_identity_count', 0)}**")
+            if old_id.get("duplicate_identity_count", 0) > 0:
+                st.write(f"- Extra rows from duplicates: **{old_id.get('total_duplicate_rows', 0)}**")
+
+        with c_new_d:
+            st.markdown("**NEW File Identity**")
+            st.write(f"- Resolved columns: `{list(new_id.get('resolved_identity_columns', {}).keys())}`")
+            if new_id.get("missing_identity_columns"):
+                st.warning(f"Missing: {new_id['missing_identity_columns']}")
+            st.write(f"- Rows after key build: **{new_id.get('total_rows_after_key_build', 'N/A')}**")
+            st.write(f"- Duplicate identity keys: **{new_id.get('duplicate_identity_count', 0)}**")
+            if new_id.get("duplicate_identity_count", 0) > 0:
+                st.write(f"- Extra rows from duplicates: **{new_id.get('total_duplicate_rows', 0)}**")
+
+        st.divider()
+        st.markdown("#### 🔗 Matching Results")
+        st.write(f"- Common identity keys: **{comp_diags.get('common_key_count', 'N/A')}**")
+        st.write(f"- New-only identity keys: **{comp_diags.get('new_only_key_count', 'N/A')}**")
+        st.write(f"- Deleted identity keys: **{comp_diags.get('deleted_key_count', 'N/A')}**")
+        st.write(f"- Extra new rows from common keys: **{comp_diags.get('extra_new_from_common', 0)}**")
+        st.write(f"- Extra deleted rows from common keys: **{comp_diags.get('extra_deleted_from_common', 0)}**")
 
 
     # ══════════════════════════════════════════════════════════════════════════════
