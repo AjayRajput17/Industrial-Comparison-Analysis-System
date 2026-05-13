@@ -81,19 +81,45 @@ def render():
 
             # Download button
             st.divider()
-            st.subheader("📤 3. Export Comparison-Ready Report")
-
-            output = io.BytesIO()
-            with pd.ExcelWriter(output, engine="xlsxwriter") as writer:
-                df_report.to_excel(writer, index=False, sheet_name="Report")
-            output.seek(0)
-
-            st.download_button(
-                label="Download Report for Comparison System 📥",
-                data=output,
-                file_name=f"Generated_{raw_file.name}",
-                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-            )
+            st.subheader("📥 3. Export Comparison-Ready Report")
+            
+            from exports.report_generation_export.report_exporter import export_business_report_excel
+            from exports.report_generation_export.report_filename import generate_report_filename
+            
+            c_name, c_btn = st.columns([3, 1])
+            
+            default_name = generate_report_filename()
+            
+            with c_name:
+                export_filename = st.text_input(
+                    "Report Filename",
+                    value=default_name,
+                    help="You can rename the report before downloading. Default includes today's date."
+                )
+                
+                # Ensure it has .xlsx extension
+                if not export_filename.lower().endswith(".xlsx"):
+                    export_filename += ".xlsx"
+            
+            @st.cache_data(show_spinner="Applying formatting and building workbook...")
+            def _prepare_report_export(df):
+                return export_business_report_excel(df)
+            
+            with c_btn:
+                st.markdown("<br>", unsafe_allow_html=True)
+                if st.button("Prepare Download", use_container_width=True, key="prep_rep_btn"):
+                    st.session_state["rep_export_ready"] = True
+                
+                if st.session_state.get("rep_export_ready"):
+                    output_bytes = _prepare_report_export(df_report)
+                    st.download_button(
+                        label="Download Report 📊",
+                        data=output_bytes,
+                        file_name=export_filename,
+                        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                        use_container_width=True
+                    )
 
         except Exception as e:
             st.error(f"Error processing files: {str(e)}")
+            st.exception(e)

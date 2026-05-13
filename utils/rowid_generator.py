@@ -25,7 +25,7 @@ def generate_row_id(row: pd.Series, columns: list = None) -> str:
 def apply_row_ids(df: pd.DataFrame, columns: list = None) -> pd.DataFrame:
     """Applies the generate_row_id logic to an entire Dataframe."""
     if df.empty:
-        df["Row ID"] = []
+        df["ROW ID"] = []
     else:
-        df["Row ID"] = df.apply(lambda row: generate_row_id(row, columns), axis=1)
+        df["ROW ID"] = df.apply(lambda row: generate_row_id(row, columns), axis=1)
     return df

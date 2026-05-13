@@ -143,6 +143,10 @@ def compare_datasets(old_df, new_df):
     # ── Normalize both ─────────────────────────────────────────────────────────
     old_norm, _ = normalize_columns(old_df)
     new_norm, _ = normalize_columns(new_df)
+    
+    from preprocessing.type_normalizer import normalize_types
+    old_norm = normalize_types(old_norm)
+    new_norm = normalize_types(new_norm)
 
     # ── Fix date columns (Excel serial numbers → readable date strings) ────────
     for frame in (old_norm, new_norm):

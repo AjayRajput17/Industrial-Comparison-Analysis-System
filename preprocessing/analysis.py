@@ -7,7 +7,15 @@ of naming variations in the input files.
 """
 
 import pandas as pd
+import re
 
+def clean_hidden_characters(val: str) -> str:
+    """Removes invisible unicode characters and zero-width spaces."""
+    if not isinstance(val, str):
+        val = str(val)
+    # Remove control characters and non-printable unicode
+    val = re.sub(r'[\x00-\x1F\x7F-\x9F\u200B-\u200D\uFEFF]', '', val)
+    return val
 
 # ── Column resolution candidates ──────────────────────────────────────────────
 _COLUMN_CANDIDATES = {
@@ -68,20 +76,20 @@ def normalize_columns(df):
     column_map = {}
     new_cols = []
     for col in df.columns:
-        normalized = str(col).strip().upper()
+        normalized = clean_hidden_characters(str(col)).strip().upper()
+        # Remove duplicate spaces
+        normalized = " ".join(normalized.split())
         # Remove prefix if there is a dot like 'PREFIX.COLUMN'
         if '.' in normalized:
             normalized = normalized.split('.')[-1].strip()
-            
+
         column_map[col] = normalized
         new_cols.append(normalized)
 
     cleaned_df = df.copy()
     cleaned_df.columns = new_cols
-   
 
     return cleaned_df, column_map
-
 
 def analyze_file_structure(df):
     """

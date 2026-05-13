@@ -77,11 +77,15 @@ def build_business_report_from_raw(raw_file_bytes: bytes, reference_file_bytes: 
             df_final[target_col] = "" # Fill missing target field with empty string
             unmatched_fields.append(target_col)
             
-    # 6. Row ID Generation Engine
+    # 6. Normalize field types (Numeric, Dates, Nulls)
+    from preprocessing.type_normalizer import normalize_types
+    df_final = normalize_types(df_final)
+
+    # 7. Row ID Generation Engine
     # Only run if ROW ID is requested by the target template
     if "ROW ID" in target_columns:
         df_final = apply_row_ids(df_final)
-        
+
     diagnostics["matched_fields"] = matched_fields
     diagnostics["unmatched_fields"] = unmatched_fields
     

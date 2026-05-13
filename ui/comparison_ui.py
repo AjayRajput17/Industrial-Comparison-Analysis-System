@@ -7,7 +7,8 @@ from comparison_engine.comment_engine import (
     PRIORITY_FIELDS,
     generate_comments_batch,
 )
-from exports.exporter import export_excel
+from exports.comparison_export.comparison_exporter import export_comparison_excel
+from exports.comparison_export.comparison_filename import generate_comparison_filename
 
 def render():
     st.markdown(
@@ -241,6 +242,48 @@ def render():
     search_row_id = st.text_input(
         "Enter ROW ID",
         value="",
-        placeholder="Type a ROW ID to view its full details…",
+        placeholder="Type a ROW ID to view its full details...",
         label_visibility="collapsed",
     )
+
+    # ══════════════════════════════════════════════════════════════════════════════
+    # EXPORT / DOWNLOAD 
+    # ══════════════════════════════════════════════════════════════════════════════
+    st.divider()
+    st.subheader("📥 Export Professional Report")
+    
+    c_name, c_btn = st.columns([3, 1])
+    
+    default_name = generate_comparison_filename()
+    
+    with c_name:
+        export_filename = st.text_input(
+            "Report Filename",
+            value=default_name,
+            help="You can rename the report before downloading. Default includes today's date."
+        )
+        
+        # Ensure it has .xlsx extension
+        if not export_filename.lower().endswith(".xlsx"):
+            export_filename += ".xlsx"
+            
+    # UX Flow: Only build the expensive workbook when user initiates.
+    # By caching the export locally, it will only rebuild if the source dataframes change.
+    @st.cache_data(show_spinner="Applying formatting and building workbook...")
+    def _prepare_comparison_export(df_nc, df_mod, df_new, df_del):
+        return export_comparison_excel(df_nc, df_mod, df_new, df_del)
+
+    with c_btn:
+        st.markdown("<br>", unsafe_allow_html=True) # spacing alignment
+        if st.button("Prepare Download", use_container_width=True, key="prep_comp_btn"):
+            st.session_state["comp_export_ready"] = True
+            
+        if st.session_state.get("comp_export_ready"):
+            export_bytes = _prepare_comparison_export(nochange_out, modified_out, new_out, deleted_out)
+            st.download_button(
+                label="Download Excel 📊",
+                data=export_bytes,
+                file_name=export_filename,
+                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                use_container_width=True
+            )
