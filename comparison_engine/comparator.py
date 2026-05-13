@@ -7,16 +7,18 @@ Compares OLD and NEW datasets using:
 
 Classifies every row into: No Change, Modified, New, or Deleted.
 
-IMPORTANT:
-  - NO deduplication is performed (drop_duplicates removed).
-  - All valid business rows are preserved.
-  - Duplicate identity collisions are reported, not silently discarded.
+PERFORMANCE OPTIMIZATIONS:
+  - Single groupby per dataset, cached as dict of list-of-dicts
+  - Single pass over common keys (no repeated groupby lookups)
+  - Pre-converted rows to dicts for O(1) field access
+  - DEBUG_MODE flag to skip expensive diagnostics in production
 """
 
 import pandas as pd
 import numpy as np
 from preprocessing.analysis import normalize_columns, resolve_column
 from config.comparison_identity import IDENTITY_COLUMNS, IDENTITY_CANDIDATES
+from config.debug_config import DEBUG_MODE
 
 
 _NULL_ALIASES = frozenset({"", "NAN", "NONE", "NAT", "<NA>", "NULL", "_"})
@@ -46,22 +48,18 @@ def _normalize_key_part(series):
     return s
 
 
-def build_business_identity_key(df):
+def build_business_identity_key(df, collect_debug=False):
     """
     Build a 9-column business identity key (__KEY__) from the DataFrame.
-
-    Key = MODEL_YEAR|PART_NO|VEH_FAM|VEH_LINE|DEPT_REL|
-          PART_USAGE_DESC|PHYSCL_DESC|ENGINE|TRANSMISSION
 
     Parameters
     ----------
     df : DataFrame with normalized (uppercase) column names.
+    collect_debug : bool, if True collect expensive diagnostics.
 
     Returns
     -------
     (df_with_key, diagnostics)
-        df_with_key: DataFrame with __KEY__ column added.
-        diagnostics: dict with identity building metadata.
     """
     df = df.copy()
     cols = list(df.columns)
@@ -85,11 +83,8 @@ def build_business_identity_key(df):
     diagnostics["resolved_identity_columns"] = resolved
     diagnostics["missing_identity_columns"] = missing
 
-    # Build the composite key by joining all 9 parts with pipe separator
-    df["__KEY__"] = key_parts[0]
-    for part in key_parts[1:]:
-        df["__KEY__"] = df["__KEY__"] + "|" + part
-
+    # Build key using vectorized concat (faster than repeated + operator)
+    df["__KEY__"] = key_parts[0].str.cat(key_parts[1:], sep="|")
     df["__KEY__"] = df["__KEY__"].fillna("").astype(str)
 
     # Drop rows where ALL segments are null/empty
@@ -99,62 +94,77 @@ def build_business_identity_key(df):
 
     diagnostics["total_rows_after_key_build"] = len(df)
 
-    # Detect duplicate keys (for diagnostics only — NOT removing them)
-    key_counts = df["__KEY__"].value_counts()
-    duplicate_keys = key_counts[key_counts > 1]
-    diagnostics["duplicate_identity_count"] = len(duplicate_keys)
-    diagnostics["total_duplicate_rows"] = int(duplicate_keys.sum() - len(duplicate_keys)) if len(duplicate_keys) > 0 else 0
-
-    if not duplicate_keys.empty:
-        diagnostics["sample_duplicate_keys"] = duplicate_keys.head(5).index.tolist()
+    # Duplicate diagnostics — only compute expensive parts in debug mode
+    if collect_debug:
+        key_counts = df["__KEY__"].value_counts()
+        duplicate_keys = key_counts[key_counts > 1]
+        diagnostics["duplicate_identity_count"] = len(duplicate_keys)
+        diagnostics["total_duplicate_rows"] = int(duplicate_keys.sum() - len(duplicate_keys)) if len(duplicate_keys) > 0 else 0
+        if not duplicate_keys.empty:
+            diagnostics["sample_duplicate_keys"] = duplicate_keys.head(5).index.tolist()
+    else:
+        # Lightweight: just count duplicated keys
+        dup_mask = df["__KEY__"].duplicated(keep=False)
+        diagnostics["duplicate_identity_count"] = df.loc[dup_mask, "__KEY__"].nunique()
+        diagnostics["total_duplicate_rows"] = int(dup_mask.sum()) - diagnostics["duplicate_identity_count"]
 
     return df, diagnostics
 
 
-def detect_changes(old_row, new_row, compare_cols):
+def _detect_changes_dict(old_dict, new_dict, compare_cols):
     """
-    Column-by-column comparison of two rows.
-
-    Returns
-    -------
-    dict : {column: "old_value → new_value"} for columns that differ.
-           Empty dict {} if all values match.
+    Compare two row dicts. Returns changes dict.
+    Optimized: operates on pre-built dicts, not pandas Series.
     """
     changes = {}
     for col in compare_cols:
-        old_val = _safe_str(old_row.get(col, ""))
-        new_val = _safe_str(new_row.get(col, ""))
+        old_val = _safe_str(old_dict.get(col, ""))
+        new_val = _safe_str(new_dict.get(col, ""))
 
-        is_diff = old_val != new_val
-
-        # Check if they are numerically equivalent (e.g., "0.0" and "0")
-        if is_diff:
+        if old_val != new_val:
+            # Numeric equivalence check
             try:
                 if float(old_val) == float(new_val):
-                    is_diff = False
-            except ValueError:
+                    continue
+            except (ValueError, TypeError):
                 pass
-
-        if is_diff:
             changes[col] = f"{old_val} → {new_val}"
     return changes
+
+
+def _build_group_dict(df_keyed):
+    """
+    Convert a keyed DataFrame into a dict of {key: [list of row dicts]}.
+    This is done ONCE and reused everywhere — O(1) lookups thereafter.
+    """
+    groups = {}
+    key_col_idx = df_keyed.columns.get_loc("__KEY__")
+    columns = list(df_keyed.columns)
+
+    for row_tuple in df_keyed.itertuples(index=False, name=None):
+        key = row_tuple[key_col_idx]
+        row_dict = {columns[i]: row_tuple[i] for i in range(len(columns))}
+        if key in groups:
+            groups[key].append(row_dict)
+        else:
+            groups[key] = [row_dict]
+
+    return groups
 
 
 def compare_datasets(old_df, new_df):
     """
     Compare two DataFrames using 9-column business identity key.
 
-    Parameters
-    ----------
-    old_df, new_df : DataFrame
-        Raw DataFrames as loaded from Excel (not yet normalized).
+    Optimized:
+      - Single groupby → dict conversion per dataset
+      - Single pass over common keys
+      - Pre-converted rows to dicts for O(1) access
+      - DEBUG_MODE controls diagnostic verbosity
 
     Returns
     -------
     (modified_df, new_only_df, deleted_df, nochange_df, comp_diagnostics)
-        Each DataFrame is clean with original column names.
-        modified_df includes a 'CHANGES' dict column.
-        comp_diagnostics contains full pipeline trace.
     """
     comp_diagnostics = {}
 
@@ -180,19 +190,19 @@ def compare_datasets(old_df, new_df):
                     pass
 
     # ── Build 9-column business identity keys ──────────────────────────────────
-    old_keyed, old_key_diags = build_business_identity_key(old_norm)
-    new_keyed, new_key_diags = build_business_identity_key(new_norm)
+    old_keyed, old_key_diags = build_business_identity_key(old_norm, collect_debug=DEBUG_MODE)
+    new_keyed, new_key_diags = build_business_identity_key(new_norm, collect_debug=DEBUG_MODE)
 
     comp_diagnostics["old_identity"] = old_key_diags
     comp_diagnostics["new_identity"] = new_key_diags
 
-    # ── NO deduplication — preserve ALL valid business rows ────────────────────
-    # Handle duplicate keys by grouping: for common keys with multiple rows,
-    # we match by position within the group (first-to-first, second-to-second).
+    # ── Build group dicts ONCE — O(1) lookups for entire comparison ────────────
+    old_groups = _build_group_dict(old_keyed)
+    new_groups = _build_group_dict(new_keyed)
 
     # ── Set math on unique key sets ────────────────────────────────────────────
-    old_keys = set(old_keyed["__KEY__"])
-    new_keys = set(new_keyed["__KEY__"])
+    old_keys = set(old_groups.keys())
+    new_keys = set(new_groups.keys())
 
     common_keys   = old_keys & new_keys
     new_only_keys = new_keys - old_keys
@@ -203,123 +213,68 @@ def compare_datasets(old_df, new_df):
     comp_diagnostics["deleted_key_count"] = len(deleted_keys)
 
     # ── Determine non-key columns to compare ──────────────────────────────────
+    old_col_set = set(old_keyed.columns)
     compare_cols = [c for c in new_keyed.columns
-                    if c in old_keyed.columns
+                    if c in old_col_set
                     and c != "__KEY__"
                     and c.upper() not in _SKIP_COMPARE]
 
-    # ── Classify common keys ──────────────────────────────────────────────────
+    # ── SINGLE PASS: classify common keys ─────────────────────────────────────
     modified_rows = []
     nochange_rows = []
-
-    # Group both DataFrames by __KEY__ to handle duplicate keys correctly
-    old_grouped = old_keyed.groupby("__KEY__", sort=False)
-    new_grouped = new_keyed.groupby("__KEY__", sort=False)
-
-    for key in common_keys:
-        old_group = old_grouped.get_group(key)
-        new_group = new_grouped.get_group(key)
-
-        # Match rows positionally within each group
-        max_rows = max(len(old_group), len(new_group))
-
-        for i in range(max_rows):
-            if i < len(old_group) and i < len(new_group):
-                # Both exist at this position — compare
-                old_row = old_group.iloc[i]
-                new_row = new_group.iloc[i]
-
-                changes = detect_changes(old_row, new_row, compare_cols)
-                row_data = new_row.to_dict()
-                row_data.pop("__KEY__", None)
-
-                if changes:
-                    row_data["CHANGES"] = changes
-                    modified_rows.append(row_data)
-                else:
-                    nochange_rows.append(row_data)
-
-            elif i >= len(old_group):
-                # Extra row in NEW — treat as new
-                row_data = new_group.iloc[i].to_dict()
-                row_data.pop("__KEY__", None)
-                # Tag as new — will be added to new_only below
-                modified_rows.append(row_data)  # stored temporarily
-                # Actually these are truly new rows within a common key
-                # We'll handle them properly below
-
-            elif i >= len(new_group):
-                # Extra row in OLD — treat as deleted
-                pass  # handled via deleted logic below
-
-    # For keys with mismatched group sizes, handle extra rows
     extra_new_rows = []
     extra_deleted_rows = []
 
     for key in common_keys:
-        old_group = old_grouped.get_group(key)
-        new_group = new_grouped.get_group(key)
+        old_row_list = old_groups[key]  # O(1) dict lookup
+        new_row_list = new_groups[key]  # O(1) dict lookup
 
-        if len(new_group) > len(old_group):
-            # Extra new rows
-            for i in range(len(old_group), len(new_group)):
-                row_data = new_group.iloc[i].to_dict()
-                row_data.pop("__KEY__", None)
-                extra_new_rows.append(row_data)
+        min_len = min(len(old_row_list), len(new_row_list))
 
-        if len(old_group) > len(new_group):
-            # Extra deleted rows
-            for i in range(len(new_group), len(old_group)):
-                row_data = old_group.iloc[i].to_dict()
-                row_data.pop("__KEY__", None)
-                extra_deleted_rows.append(row_data)
+        # Positional matching: compare first-to-first, second-to-second
+        for i in range(min_len):
+            old_dict = old_row_list[i]
+            new_dict = new_row_list[i]
 
-    # Remove the temporarily added extra new rows from modified_rows
-    # (they were appended in the main loop — remove them)
-    # Recalculate modified_rows cleanly
-    modified_rows_clean = []
-    nochange_rows_clean = []
+            changes = _detect_changes_dict(old_dict, new_dict, compare_cols)
 
-    for key in common_keys:
-        old_group = old_grouped.get_group(key)
-        new_group = new_grouped.get_group(key)
-        min_rows = min(len(old_group), len(new_group))
-
-        for i in range(min_rows):
-            old_row = old_group.iloc[i]
-            new_row = new_group.iloc[i]
-
-            changes = detect_changes(old_row, new_row, compare_cols)
-            row_data = new_row.to_dict()
-            row_data.pop("__KEY__", None)
+            row_data = {k: v for k, v in new_dict.items() if k != "__KEY__"}
 
             if changes:
                 row_data["CHANGES"] = changes
-                modified_rows_clean.append(row_data)
+                modified_rows.append(row_data)
             else:
-                nochange_rows_clean.append(row_data)
+                nochange_rows.append(row_data)
+
+        # Extra new rows (more in NEW than OLD for this key)
+        for i in range(min_len, len(new_row_list)):
+            row_data = {k: v for k, v in new_row_list[i].items() if k != "__KEY__"}
+            extra_new_rows.append(row_data)
+
+        # Extra deleted rows (more in OLD than NEW for this key)
+        for i in range(min_len, len(old_row_list)):
+            row_data = {k: v for k, v in old_row_list[i].items() if k != "__KEY__"}
+            extra_deleted_rows.append(row_data)
 
     # ── Build output DataFrames ────────────────────────────────────────────────
-    modified_df = pd.DataFrame(modified_rows_clean) if modified_rows_clean else pd.DataFrame()
-    nochange_df = pd.DataFrame(nochange_rows_clean) if nochange_rows_clean else pd.DataFrame()
+    modified_df = pd.DataFrame(modified_rows) if modified_rows else pd.DataFrame()
+    nochange_df = pd.DataFrame(nochange_rows) if nochange_rows else pd.DataFrame()
 
     # New-only: keys exclusively in NEW + extra rows from common keys
-    new_only_base = new_keyed[new_keyed["__KEY__"].isin(new_only_keys)].drop(
-                        columns=["__KEY__"]).reset_index(drop=True)
-    if extra_new_rows:
-        extra_new_df = pd.DataFrame(extra_new_rows)
-        new_only_df = pd.concat([new_only_base, extra_new_df], ignore_index=True)
-    else:
-        new_only_df = new_only_base
+    new_only_rows = []
+    for key in new_only_keys:
+        for row_dict in new_groups[key]:
+            new_only_rows.append({k: v for k, v in row_dict.items() if k != "__KEY__"})
+    new_only_rows.extend(extra_new_rows)
+    new_only_df = pd.DataFrame(new_only_rows) if new_only_rows else pd.DataFrame()
 
     # Deleted: keys exclusively in OLD + extra rows from common keys
-    deleted_base = old_keyed[old_keyed["__KEY__"].isin(deleted_keys)].drop(
-                       columns=["__KEY__"]).reset_index(drop=True)
-    if extra_deleted_rows:
-        extra_del_df = pd.DataFrame(extra_deleted_rows)
-        deleted_df = pd.concat([deleted_base, extra_del_df], ignore_index=True)
-    else:
-        deleted_df = deleted_base
+    deleted_rows = []
+    for key in deleted_keys:
+        for row_dict in old_groups[key]:
+            deleted_rows.append({k: v for k, v in row_dict.items() if k != "__KEY__"})
+    deleted_rows.extend(extra_deleted_rows)
+    deleted_df = pd.DataFrame(deleted_rows) if deleted_rows else pd.DataFrame()
 
     comp_diagnostics["modified_count"] = len(modified_df)
     comp_diagnostics["nochange_count"] = len(nochange_df)
