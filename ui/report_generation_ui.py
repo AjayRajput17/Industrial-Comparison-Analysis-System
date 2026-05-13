@@ -3,6 +3,7 @@ import pandas as pd
 import io
 from report_generator.builder import build_business_report_from_raw
 
+
 def render():
     st.markdown(
         "<h1 style='text-align:center;'>📄 EBOM/MBOM Business Report Generator</h1>",
@@ -10,119 +11,167 @@ def render():
     )
     st.markdown(
         "<p style='text-align:center; color:#888;'>"
-        "Recreate existing comparison report formats directly from MBOMs by detecting the true data headers."
+        "Generate comparison-compatible reports directly from raw MBOMs. "
+        "Business filters and deduplication are applied automatically."
         "</p>",
         unsafe_allow_html=True,
     )
 
     st.divider()
 
-    col_ref, col_raw = st.columns(2)
-
-    with col_ref:
-        st.subheader("🎯 1. Target Template")
-        st.info("Upload the existing 'Golden Template' (e.g., 'New report...'). The generated report will clone this exact column schema.")
-        reference_file = st.file_uploader("Upload reference report", type=["xlsx", "xls"], key="ref_file")
+    col_raw, col_ref = st.columns(2)
 
     with col_raw:
-        st.subheader("📥 2. Raw MBOM Data")
+        st.subheader("📥 1. Raw MBOM Data")
         st.info("Upload the raw engineering BOM (e.g., 'TORQUE_CURRENT_REPORT.xlsx').")
         raw_file = st.file_uploader("Upload raw Excel file", type=["xlsx", "xls", "csv"], key="raw_file")
 
-    @st.cache_data(show_spinner="Running Business Header Detection & Building Report...")
+    with col_ref:
+        st.subheader("🎯 2. Target Template (Optional)")
+        st.info("Upload an existing report to clone its schema. If skipped, the default schema is used.")
+        reference_file = st.file_uploader("Upload reference report (optional)", type=["xlsx", "xls"], key="ref_file")
+
+    @st.cache_data(show_spinner="Running Business Pipeline (Header Detection → Filtering → Deduplication → Mapping)...")
     def _cached_build(raw, ref):
         return build_business_report_from_raw(raw, ref)
 
-    if raw_file and reference_file:
+    if raw_file:
         raw_bytes = raw_file.getvalue()
-        ref_bytes = reference_file.getvalue()
+        ref_bytes = reference_file.getvalue() if reference_file else None
 
         try:
-            # Build business report
             df_report, info = _cached_build(raw_bytes, ref_bytes)
 
-            st.success("✅ Report Generation Complete! Columns directly matched without semantic mapping.")
+            st.success("✅ Report Generation Complete!")
 
-            # Show diagnostics
+            # ══════════════════════════════════════════════════════════════
+            # PIPELINE TRACE DIAGNOSTICS
+            # ══════════════════════════════════════════════════════════════
             with st.expander("🔍 Processing Diagnostics & Data Flow Trace", expanded=True):
-                st.write(f"**Target Report Data Constraints**")
-                st.write(f"- Schema Size Found: **{info['target_columns_count']} specific fields**")
-                
-                st.divider()
-                st.write(f"**MBOM Header Detection Phase**")
-                st.write(f"- True Header detected at Row Index: **{info['detected_header_row_index']}**")
-                st.write(f"- Total Rows Extracted: **{info['rows_generated']}**")
+
+                # --- Header Detection ---
+                st.markdown("#### 📂 Header Detection")
+                st.write(f"- True Header detected at Row Index: **{info.get('detected_header_row_index', 'N/A')}**")
+                st.write(f"- Total rows loaded from MBOM: **{info.get('rows_after_header_detection', 'N/A')}**")
+                st.write(f"- Normalized column count: **{info.get('normalized_raw_columns_count', 'N/A')}**")
 
                 st.divider()
-                st.write(f"**Column Mapping Phase**")
-                st.write(f"- Directly mapped target fields: **{len(info['matched_fields'])}**")
-                
-                # Use columns to show mapped vs unmapped neatly
+
+                # --- Schema Source ---
+                st.markdown("#### 📋 Target Schema")
+                st.write(f"- Schema source: **{info.get('schema_source', 'N/A')}**")
+                st.write(f"- Schema size: **{info.get('target_columns_count', 'N/A')} columns**")
+
+                st.divider()
+
+                # --- Business Filtering ---
+                st.markdown("#### 🎛️ Business Filtering")
+                st.write(f"- Rows before all filters: **{info.get('rows_before_all_filters', 'N/A')}**")
+
+                # PART STATUS
+                st.write(f"- **PART STATUS filter** (keep='R')")
+                st.write(f"  - Column: `{info.get('filter_part_status_col', 'N/A')}`")
+                st.write(f"  - Removed: **{info.get('rows_removed_part_status', 0)}** rows")
+
+                # TORQUE SAFETY
+                st.write(f"- **TORQUE SAFETY filter** (keep='Y','N')")
+                st.write(f"  - Column: `{info.get('filter_torque_safety_col', 'N/A')}`")
+                st.write(f"  - Removed: **{info.get('rows_removed_torque_safety', 0)}** rows")
+
+                # TRGT
+                st.write(f"- **TRGT filter** (keep 0 and ≥5, remove 0<x<5)")
+                st.write(f"  - Column: `{info.get('filter_trgt_col', 'N/A')}`")
+                st.write(f"  - Removed: **{info.get('rows_removed_trgt', 0)}** rows")
+
+                st.write(f"- **Rows after all filters: {info.get('rows_after_all_filters', 'N/A')}**")
+                st.write(f"- Total filtered out: **{info.get('total_rows_filtered_out', 0)}** rows")
+
+                st.divider()
+
+                # --- Column Mapping ---
+                st.markdown("#### 🔗 Column Mapping")
+                st.write(f"- Directly mapped fields: **{len(info.get('matched_fields', []))}**")
+
                 c_map, c_miss = st.columns(2)
                 with c_map:
-                    st.markdown("**Successfully Mapped Fields:**")
-                    for m in info['matched_fields']:
+                    st.markdown("**Successfully Mapped:**")
+                    for m in info.get('matched_fields', []):
                         st.write(f"- `{m}`")
-                
                 with c_miss:
-                    st.markdown("**Synthesized Blank Columns:**")
-                    if info['unmatched_fields']:
-                        for m in info['unmatched_fields']:
+                    st.markdown("**Synthesized Blank:**")
+                    unmapped = info.get('unmatched_fields', [])
+                    if unmapped:
+                        for m in unmapped:
                             st.write(f"- `{m}`")
                     else:
-                        st.write("_None, all target schema columns existed in MBOM!_")
-                        
-                st.divider()
-                st.write("**Row ID Generation Engine:** active")
-                
-                st.divider()
-                st.write(f"**Exact Deduplication Phase (Macro Alignment)**")
-                st.write(f"- Total rows pre-deduplication: **{info.get('total_rows_pre_dedupe', 'N/A')}**")
-                st.write(f"- Exact identical rows removed: **{info.get('exact_duplicates_to_remove', 'N/A')}**")
-                st.write(f"- Unique rows remaining: **{info.get('total_rows_post_dedupe', 'N/A')}**")
-                
-                if info.get('conflicting_rowids_remaining', 0) > 0:
-                    st.warning(info.get('status', 'Warning'))
-                    st.write(f"- Conflicting ROW IDs remaining: **{info.get('conflicting_rowids_remaining')}**")
-                    st.write(f"- Sample conflicting ROW IDs: {info.get('sample_conflicting_rowids')}")
-                else:
-                    st.success(info.get('status', '✅ All ROW IDs are now 100% unique.'))
+                        st.write("_None — all target columns mapped!_")
 
+                st.divider()
+
+                # --- Deduplication ---
+                st.markdown("#### 🧹 Business Deduplication")
+                st.write(f"- Dedup columns used: `{info.get('dedup_columns_used', 'N/A')}`")
+                st.write(f"- Rows before deduplication: **{info.get('total_rows_pre_dedupe', 'N/A')}**")
+                st.write(f"- Business duplicates removed: **{info.get('exact_duplicates_to_remove', 0)}**")
+
+                st.divider()
+
+                # --- Row ID & Validation ---
+                st.markdown("#### 🆔 Row ID Generation & Validation")
+                st.write(f"- Rows after deduplication: **{info.get('total_rows_post_dedupe', 'N/A')}**")
+                st.write(f"- Conflicting ROW IDs remaining: **{info.get('conflicting_rowids_remaining', 0)}**")
+
+                validation_status = info.get('validation_status', '')
+                if info.get('conflicting_rowids_remaining', 0) > 0:
+                    st.warning(validation_status)
+                    st.write(f"- Sample conflicts: {info.get('sample_conflicting_rowids', [])}")
+                else:
+                    st.success(f"✅ {validation_status}")
+
+                st.divider()
+
+                # --- Final Export ---
+                st.markdown("#### 📊 Final Report")
+                st.write(f"- Final row count: **{info.get('rows_generated', 'N/A')}**")
+                st.write(f"- Final column count: **{len(info.get('final_report_schema', []))}**")
+
+            # ══════════════════════════════════════════════════════════════
+            # PREVIEW
+            # ══════════════════════════════════════════════════════════════
             st.subheader("Preview Business-Ready Data")
-            # Show only top rows
             st.dataframe(df_report.head(50))
 
-            # Download button
+            # ══════════════════════════════════════════════════════════════
+            # EXPORT
+            # ══════════════════════════════════════════════════════════════
             st.divider()
             st.subheader("📥 3. Export Comparison-Ready Report")
-            
+
             from exports.report_generation_export.report_exporter import export_business_report_excel
             from exports.report_generation_export.report_filename import generate_report_filename
-            
+
             c_name, c_btn = st.columns([3, 1])
-            
+
             default_name = generate_report_filename()
-            
+
             with c_name:
                 export_filename = st.text_input(
                     "Report Filename",
                     value=default_name,
                     help="You can rename the report before downloading. Default includes today's date."
                 )
-                
-                # Ensure it has .xlsx extension
                 if not export_filename.lower().endswith(".xlsx"):
                     export_filename += ".xlsx"
-            
+
             @st.cache_data(show_spinner="Applying formatting and building workbook...")
             def _prepare_report_export(df):
                 return export_business_report_excel(df)
-            
+
             with c_btn:
                 st.markdown("<br>", unsafe_allow_html=True)
                 if st.button("Prepare Download", use_container_width=True, key="prep_rep_btn"):
                     st.session_state["rep_export_ready"] = True
-                
+
                 if st.session_state.get("rep_export_ready"):
                     output_bytes = _prepare_report_export(df_report)
                     st.download_button(
