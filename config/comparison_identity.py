@@ -17,8 +17,8 @@ IDENTITY_COLUMNS = [
     "DEPT_REL",          # Assembly department/workstation
     "PART USAGE DESC",   # Where/how the part is used
     "PHYSCL DESC",       # Thread/size specification
-    "ENGINE",            # Engine configuration
-    "TRANSMISSION",      # Transmission configuration
+    #"ENGINE",            # Engine configuration
+    #"TRANSMISSION",      # Transmission configuration
 ]
 
 # ── FLEXIBLE COLUMN RESOLUTION CANDIDATES ─────────────────────────────────────
@@ -31,6 +31,6 @@ IDENTITY_CANDIDATES = {
     "DEPT_REL":        ["DEPT_REL", "DEPT REL", "DEPARTMENT", "DEPT"],
     "PART USAGE DESC": ["PART USAGE DESC", "PART_USAGE_DESC", "USAGE DESC"],
     "PHYSCL DESC":     ["PHYSCL DESC", "PHYSCL_DESC", "PHYSICAL DESC", "PHYSICAL_DESC"],
-    "ENGINE":          ["ENGINE", "ENGINE CODE"],
-    "TRANSMISSION":    ["TRANSMISSION", "TRANS"],
+   # "ENGINE":          ["ENGINE", "ENGINE CODE"],
+   # "TRANSMISSION":    ["TRANSMISSION", "TRANS"],
 }
