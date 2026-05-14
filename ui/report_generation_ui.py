@@ -22,7 +22,7 @@ def render():
     col_raw, col_ref = st.columns(2)
 
     with col_raw:
-        st.subheader("📥 1. Raw MBOM Data")
+        st.subheader("📥 1. Raw EBOM Data")
         st.info("Upload the raw engineering BOM (e.g., 'TORQUE_CURRENT_REPORT.xlsx').")
         raw_file = st.file_uploader("Upload raw Excel file", type=["xlsx", "xls", "csv"], key="raw_file")
 

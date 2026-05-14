@@ -12,7 +12,7 @@ The Report Generation module converts a **raw MBOM/EBOM file** (e.g., `TORQUE_CU
 
 ```mermaid
 flowchart TD
-    A["📥 Raw MBOM Upload<br/>(TORQUE_CURRENT_REPORT.XLSX)"] --> B["🔍 Multi-Level Header Detection"]
+    A["📥 Raw EBOM Upload<br/>(TORQUE_CURRENT_REPORT.XLSX)"] --> B["🔍 Multi-Level Header Detection"]
     B --> C["📋 Column Normalization"]
     C --> D["🎛️ Business Filtering<br/>PART STATUS / TORQUE SAFETY / TRGT"]
     D --> E["🔗 Hierarchical Field Mapping<br/>(RESIDUAL torque values)"]
