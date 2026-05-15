@@ -281,14 +281,14 @@ def render():
     # ══════════════════════════════════════════════════════════════════════════════
     # ROW ID SEARCH
     # ══════════════════════════════════════════════════════════════════════════════
-    st.divider()
-    st.subheader("🔍 Search by ROW ID")
-    search_row_id = st.text_input(
-        "Enter ROW ID",
-        value="",
-        placeholder="Type a ROW ID to view its full details...",
-        label_visibility="collapsed",
-    )
+    # st.divider()
+    # st.subheader("🔍 Search by ROW ID")
+    # search_row_id = st.text_input(
+    #     "Enter ROW ID",
+    #     value="",
+    #     placeholder="Type a ROW ID to view its full details...",
+    #     label_visibility="collapsed",
+    # )
 
     # ══════════════════════════════════════════════════════════════════════════════
     # DEFERRED EXCEL EXPORT — only builds workbook on demand
