@@ -19,13 +19,13 @@ REASONING (2026-05-15):
   ENGINE/TRANSMISSION updates are parameter modifications, not part replacements.
 """
 
-# ── 7-COLUMN BUSINESS IDENTITY KEY ───────────────────────────────────────────
+# ── 5-COLUMN BUSINESS IDENTITY KEY ───────────────────────────────────────────
 IDENTITY_COLUMNS = [
     "MODEL YEAR",        # Part vintage
     "PART NO",           # Hardware identifier
     "VEH FAM",           # Vehicle family/platform
-    "VEH LINE",          # Platform/geographical line
-    "DEPT_REL",          # Assembly department/workstation
+    # "VEH LINE",          # Platform/geographical line
+    # "DEPT_REL",          # Assembly department/workstation
     "PART USAGE DESC",   # Where/how the part is used
     "PHYSCL DESC",       # Thread/size specification
 ]
@@ -36,8 +36,8 @@ IDENTITY_CANDIDATES = {
     "MODEL YEAR":      ["MODEL YEAR", "MODEL_YEAR", "MODELYEAR", "MY"],
     "PART NO":         ["PART NO", "PART_NO", "PARTNO", "PART NUMBER", "PART_NUMBER"],
     "VEH FAM":         ["VEH FAM", "VEH_FAM", "VEHFAM", "VEHICLE FAMILY", "VEHICLE_FAMILY"],
-    "VEH LINE":        ["VEH LINE", "VEH_LINE", "VEHLINE", "VEHICLE LINE"],
-    "DEPT_REL":        ["DEPT_REL", "DEPT REL", "DEPARTMENT", "DEPT"],
+    # "VEH LINE":        ["VEH LINE", "VEH_LINE", "VEHLINE", "VEHICLE LINE"],
+    # "DEPT_REL":        ["DEPT_REL", "DEPT REL", "DEPARTMENT", "DEPT"],
     "PART USAGE DESC": ["PART USAGE DESC", "PART_USAGE_DESC", "USAGE DESC"],
     "PHYSCL DESC":     ["PHYSCL DESC", "PHYSCL_DESC", "PHYSICAL DESC", "PHYSICAL_DESC"],
 }

@@ -1,9 +1,9 @@
 """
-comparator.py — Core comparison engine using 9-column business identity key.
+comparator.py — Core comparison engine using 7-column business identity key.
 
 Compares OLD and NEW datasets using:
   MODEL YEAR + PART NO + VEH FAM + VEH LINE + DEPT_REL +
-  PART USAGE DESC + PHYSCL DESC + ENGINE + TRANSMISSION
+  PART USAGE DESC + PHYSCL DESC 
 
 Classifies every row into: No Change, Modified, New, or Deleted.
 
