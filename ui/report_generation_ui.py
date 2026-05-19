@@ -6,12 +6,12 @@ from report_generator.builder import build_business_report_from_raw
 
 def render():
     st.markdown(
-        "<h1 style='text-align:center;'>📄 EBOM/MBOM Business Report Generator</h1>",
+        "<h1 style='text-align:center;'>📄 EBOM Business Report Generator</h1>",
         unsafe_allow_html=True,
     )
     st.markdown(
         "<p style='text-align:center; color:#888;'>"
-        "Generate comparison-compatible reports directly from raw MBOMs. "
+        "Generate comparison-compatible reports directly from raw EBOMs. "
         "Business filters and deduplication are applied automatically."
         "</p>",
         unsafe_allow_html=True,
