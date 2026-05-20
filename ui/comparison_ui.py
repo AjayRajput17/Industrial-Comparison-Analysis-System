@@ -49,7 +49,7 @@ def render():
         return
 
     # ── Cached comparison — runs ONCE per file pair ───────────────────────────────
-    @st.cache_data(show_spinner="Running 5-column business identity comparison...")
+    @st.cache_data(show_spinner="Running 9-column business identity comparison...")
     def _cached_compare(old_bytes, old_name, new_bytes, new_name):
         import io
         old_df = pd.read_excel(io.BytesIO(old_bytes))
@@ -88,7 +88,7 @@ def render():
     # COMPARISON DIAGNOSTICS (collapsed — lightweight summary only)
     # ══════════════════════════════════════════════════════════════════════════════
     with st.expander("🔬 Comparison Engine Diagnostics", expanded=False):
-        st.markdown("#### 🆔 Business Identity Key (9 columns)")
+        st.markdown("#### 🆔 Business Identity Key")
 
         old_id = comp_diags.get("old_identity", {})
         new_id = comp_diags.get("new_identity", {})
