@@ -116,6 +116,21 @@ def render():
         st.write(f"- New-only keys: **{comp_diags.get('new_only_key_count')}**")
         st.write(f"- Deleted keys: **{comp_diags.get('deleted_key_count')}**")
 
+        # ── Rescue Pass Diagnostics ───────────────────────────────────────────
+        rescue = comp_diags.get("rescue", {})
+        if rescue:
+            st.divider()
+            st.markdown("#### 🛟 Rescue Pass")
+            rescued = rescue.get("rescued_count", 0)
+            if rescued > 0:
+                st.success(f"✅ Rescued **{rescued}** false Added/Deleted pairs → Modified")
+                st.write(f"  - Phase A (ENGINE same): **{rescue.get('phase_a_rescued', 0)}**")
+                st.write(f"  - Phase B (ENGINE different, validated): **{rescue.get('phase_b_rescued', 0)}**")
+            else:
+                st.info("ℹ️ No false Added/Deleted pairs found to rescue")
+            st.write(f"  - Remaining true Added: **{rescue.get('remaining_added', 0)}**")
+            st.write(f"  - Remaining true Deleted: **{rescue.get('remaining_deleted', 0)}**")
+
     # ══════════════════════════════════════════════════════════════════════════════
     # PERFORMANCE TIMING SUMMARY (collapsed)
     # ══════════════════════════════════════════════════════════════════════════════

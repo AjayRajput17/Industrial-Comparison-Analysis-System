@@ -26,11 +26,15 @@ from utils.performance_timer import PipelineTimer
 _NULL_ALIASES = frozenset({"", "NAN", "NONE", "NAT", "<NA>", "NULL", "_"})
 
 # Columns to NEVER compare (unique per row, irrelevant to part data)
+# ── To re-enable any field for comparison, remove it from this set ────────────
 _SKIP_COMPARE = frozenset({
     "ROW ID", "ROW_ID", "ROWID", "ROW NO", "ROW_NO",
     "SR NO", "SR_NO", "SERIAL NO", "SERIAL_NO", "S NO", "S.NO",
     "INDEX", "__KEY__",
     "COMMENT", "COMMENTS",
+    # "DECISIONED CN #",   # excluded — re-add to compare by removing this line
+    # "DECISION DATE",     # excluded — re-add to compare by removing this line
+    # "END ITEM PART",     # excluded — re-add to compare by removing this line
 })
 
 
@@ -293,6 +297,24 @@ def compare_datasets(old_df, new_df):
     deleted_rows.extend(extra_deleted_rows)
     deleted_df = pd.DataFrame(deleted_rows) if deleted_rows else pd.DataFrame()
     timer.stop("Output DataFrame Build")
+
+    # ── RESCUE PASS: Reclassify false Added/Deleted pairs ─────────────────────
+    timer.start("Rescue Pass")
+    from comparison_engine.rescue_pass import rescue_false_added_deleted
+
+    rescued_df, new_only_df, deleted_df, rescue_diags = rescue_false_added_deleted(
+        new_only_df, deleted_df
+    )
+
+    # Merge rescued rows into modified_df
+    if not rescued_df.empty:
+        if modified_df.empty:
+            modified_df = rescued_df
+        else:
+            modified_df = pd.concat([modified_df, rescued_df], ignore_index=True)
+
+    comp_diagnostics["rescue"] = rescue_diags
+    timer.stop("Rescue Pass")
 
     comp_diagnostics["modified_count"] = len(modified_df)
     comp_diagnostics["nochange_count"] = len(nochange_df)
