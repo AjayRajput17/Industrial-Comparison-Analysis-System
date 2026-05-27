@@ -14,6 +14,7 @@ from config.business_rules import (
     TORQUE_FILTER_FIELD,
     TORQUE_THRESHOLD,
     KEEP_ZERO_TORQUE,
+    ENABLE_TRGT_FILTER,
     RAW_PART_STATUS_PATH,
     RAW_TORQUE_SAFETY_PATH,
     RAW_TRGT_RESIDUAL_PATH,
@@ -83,16 +84,22 @@ def apply_all_business_filters(df, diagnostics=None):
     diagnostics["rows_after_torque_safety_filter"] = int(combined_mask.sum())
 
     # ── 3. TRGT filter (keep 0 and ≥5, remove 0 < x < 5) ────────────────────
-    trgt_col = _resolve_column(df, RAW_TRGT_RESIDUAL_PATH)
+    # Controlled by ENABLE_TRGT_FILTER in config/business_rules.py.
+    # Set ENABLE_TRGT_FILTER = True to re-enable this filter.
     rows_before_trgt = int(combined_mask.sum())
-    if trgt_col is not None:
-        trgt_numeric = pd.to_numeric(df[trgt_col], errors="coerce").fillna(0)
-        trgt_mask = (trgt_numeric == 0) | (trgt_numeric >= TORQUE_THRESHOLD)
-        diagnostics["filter_trgt_col"] = str(trgt_col)
-        diagnostics["rows_removed_trgt"] = int((combined_mask & ~trgt_mask).sum())
-        combined_mask = combined_mask & trgt_mask
+    if ENABLE_TRGT_FILTER:
+        trgt_col = _resolve_column(df, RAW_TRGT_RESIDUAL_PATH)
+        if trgt_col is not None:
+            trgt_numeric = pd.to_numeric(df[trgt_col], errors="coerce").fillna(0)
+            trgt_mask = (trgt_numeric == 0) | (trgt_numeric >= TORQUE_THRESHOLD)
+            diagnostics["filter_trgt_col"] = str(trgt_col)
+            diagnostics["rows_removed_trgt"] = int((combined_mask & ~trgt_mask).sum())
+            combined_mask = combined_mask & trgt_mask
+        else:
+            diagnostics["filter_trgt_col"] = "NOT FOUND — skipped"
+            diagnostics["rows_removed_trgt"] = 0
     else:
-        diagnostics["filter_trgt_col"] = "NOT FOUND — skipped"
+        diagnostics["filter_trgt_col"] = "DISABLED via ENABLE_TRGT_FILTER=False"
         diagnostics["rows_removed_trgt"] = 0
 
     diagnostics["rows_before_trgt_filter"] = rows_before_trgt

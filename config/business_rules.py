@@ -9,6 +9,12 @@ TORQUE_THRESHOLD = 5
 KEEP_ZERO_TORQUE = True
 # Rule: Keep TRGT == 0 OR TRGT >= 5. Remove 0 < TRGT < 5.
 
+# TRGT filter toggle — set to True to re-enable the 0 < TRGT < 5 removal.
+# Disabled (2026-05-28): Rows with legitimate low torque values were being
+# removed before comparison, causing missing Modified rows and false
+# Deleted/Added classifications. Filter retained for future business review.
+ENABLE_TRGT_FILTER = False
+
 # ── PART STATUS FILTER ────────────────────────────────────────────────────────
 VALID_PART_STATUS = ["R"]
 

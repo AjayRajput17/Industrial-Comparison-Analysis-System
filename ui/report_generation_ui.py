@@ -146,19 +146,19 @@ def render():
 
                 st.divider()
 
-                # --- Row ID & Validation ---
-                st.markdown("#### 🆔 Row ID Generation & Validation")
-                st.write(f"- Rows after deduplication: **{info.get('total_rows_post_dedupe', 'N/A')}**")
-                st.write(f"- Conflicting ROW IDs remaining: **{info.get('conflicting_rowids_remaining', 0)}**")
+                # # --- Row ID & Validation ---
+                # st.markdown("#### 🆔 Row ID Generation & Validation")
+                # st.write(f"- Rows after deduplication: **{info.get('total_rows_post_dedupe', 'N/A')}**")
+                # st.write(f"- Conflicting ROW IDs remaining: **{info.get('conflicting_rowids_remaining', 0)}**")
 
-                validation_status = info.get('validation_status', '')
-                if info.get('conflicting_rowids_remaining', 0) > 0:
-                    st.warning(validation_status)
-                    st.write(f"- Sample conflicts: {info.get('sample_conflicting_rowids', [])}")
-                else:
-                    st.success(f"✅ {validation_status}")
+                # validation_status = info.get('validation_status', '')
+                # if info.get('conflicting_rowids_remaining', 0) > 0:
+                #     st.warning(validation_status)
+                #     st.write(f"- Sample conflicts: {info.get('sample_conflicting_rowids', [])}")
+                # else:
+                #     st.success(f"✅ {validation_status}")
 
-                st.divider()
+                # st.divider()
 
                 # --- Final Export ---
                 st.markdown("#### 📊 Final Report")
