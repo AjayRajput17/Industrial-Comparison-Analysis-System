@@ -132,6 +132,61 @@ def render():
             st.write(f"  - Remaining true Deleted: **{rescue.get('remaining_deleted', 0)}**")
 
     # ══════════════════════════════════════════════════════════════════════════════
+    # ACTIONABILITY SUMMARY
+    # ══════════════════════════════════════════════════════════════════════════════
+    action_diags = comp_diags.get("actionability", {})
+    if action_diags and action_diags.get("status") != "DISABLED via ENABLE_ACTIONABILITY_CLASSIFIER=False":
+        with st.expander("🎯 Actionability Summary", expanded=False):
+            mod_act = action_diags.get("modified", {})
+            add_act = action_diags.get("added", {})
+
+            # ── High-level metrics ────────────────────────────────────────────
+            st.markdown("#### Modified Rows")
+            c1, c2, c3 = st.columns(3)
+            c1.metric("Total Modified", mod_act.get("modified_input", 0))
+            c2.metric("⚡ Action Required", mod_act.get("action_yes", 0))
+            c3.metric("ℹ️ Informational", mod_act.get("action_no", 0))
+
+            st.markdown("#### Added Rows")
+            added_yes = add_act.get("added_action_yes", 0)
+            added_no = add_act.get("added_action_no", 0)
+            if added_no > 0:
+                ca1, ca2, ca3 = st.columns(3)
+                ca1.metric("Total Added", added_yes + added_no)
+                ca2.metric("⚡ Action Required", added_yes)
+                ca3.metric("ℹ️ Low Torque (No Action)", added_no)
+            else:
+                st.write(f"- All **{added_yes}** Added rows → **ACTION REQUIRED = YES**")
+
+            # ── Category breakdown ────────────────────────────────────────────
+            st.divider()
+            st.markdown("#### 📊 Review Category Breakdown")
+            mod_cats = mod_act.get("category_breakdown", {})
+            add_cats = add_act.get("category_breakdown", {})
+            # Merge both category dicts
+            all_cats = {}
+            for cat, count in mod_cats.items():
+                all_cats[cat] = all_cats.get(cat, 0) + count
+            for cat, count in add_cats.items():
+                all_cats[cat] = all_cats.get(cat, 0) + count
+            if all_cats:
+                cat_rows = [{"Review Category": cat, "Count": count}
+                            for cat, count in sorted(all_cats.items(), key=lambda x: -x[1])]
+                st.table(pd.DataFrame(cat_rows))
+
+            # ── Low torque metrics ────────────────────────────────────────────
+            low_t = mod_act.get("low_torque_changes", 0)
+            cross = mod_act.get("threshold_crossings", 0)
+            admin = mod_act.get("admin_changes", 0)
+            if low_t or cross or admin:
+                st.divider()
+                st.markdown("#### 🔬 Detail Metrics")
+                dm1, dm2, dm3 = st.columns(3)
+                dm1.metric("Low Torque Changes", low_t)
+                dm2.metric("Threshold Crossings", cross)
+                dm3.metric("Administrative Only", admin)
+
+    # ══════════════════════════════════════════════════════════════════════════════
     # PERFORMANCE TIMING SUMMARY (collapsed)
     # ══════════════════════════════════════════════════════════════════════════════
     timing = comp_diags.get("timing", {})

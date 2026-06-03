@@ -316,6 +316,16 @@ def compare_datasets(old_df, new_df):
     comp_diagnostics["rescue"] = rescue_diags
     timer.stop("Rescue Pass")
 
+    # ── ACTIONABILITY CLASSIFICATION (post-comparison metadata only) ───────────
+    timer.start("Actionability Classification")
+    from validation.actionability_classifier import apply_actionability_labels
+
+    modified_df, new_only_df, action_diags = apply_actionability_labels(
+        modified_df, new_only_df
+    )
+    comp_diagnostics["actionability"] = action_diags
+    timer.stop("Actionability Classification")
+
     comp_diagnostics["modified_count"] = len(modified_df)
     comp_diagnostics["nochange_count"] = len(nochange_df)
     comp_diagnostics["new_count"] = len(new_only_df)
