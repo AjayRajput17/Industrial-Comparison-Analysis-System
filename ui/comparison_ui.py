@@ -131,6 +131,23 @@ def render():
             st.write(f"  - Remaining true Added: **{rescue.get('remaining_added', 0)}**")
             st.write(f"  - Remaining true Deleted: **{rescue.get('remaining_deleted', 0)}**")
 
+        # ── Duplicate Group Rescue Diagnostics ────────────────────────────────
+        dgr = comp_diags.get("duplicate_group_rescue", {})
+        if dgr and dgr.get("status") == "COMPLETED":
+            st.divider()
+            st.markdown("#### 🔄 Duplicate Group Rescue")
+            groups_rescued = dgr.get("groups_rescued", 0)
+            if groups_rescued > 0:
+                m2nc = dgr.get("modified_to_nochange", 0)
+                m2dm = dgr.get("modified_to_diff_modified", 0)
+                st.success(f"✅ Rescued **{groups_rescued}** duplicate groups with better matches")
+                st.write(f"  - Modified → No Change: **{m2nc}**")
+                st.write(f"  - Modified → Better Modified: **{m2dm}**")
+            else:
+                st.info("ℹ️ No duplicate group rescues needed")
+            st.write(f"  - Groups analysed: **{dgr.get('duplicate_groups_found', 0)}**")
+            st.write(f"  - Rows analysed: **{dgr.get('rows_analysed', 0)}**")
+
     # ══════════════════════════════════════════════════════════════════════════════
     # ACTIONABILITY SUMMARY
     # ══════════════════════════════════════════════════════════════════════════════
@@ -199,6 +216,33 @@ def render():
             timing_rows.append({"Stage": "**TOTAL**", "Duration (sec)": total})
             st.table(pd.DataFrame(timing_rows))
             timing["TOTAL"] = total
+
+    # ══════════════════════════════════════════════════════════════════════════════
+    # SMART RE-MATCH SIMULATOR (Debug Only)
+    # ══════════════════════════════════════════════════════════════════════════════
+    sm_diags = comp_diags.get("smart_rematch", {})
+    if sm_diags and sm_diags.get("diagnostics", {}).get("status") == "COMPLETED":
+        with st.expander("🧪 Smart Re-Match Simulator (Debug)", expanded=False):
+            st.warning("This is an analytical simulation. These results do not affect the main comparison output.")
+            sm_metrics = sm_diags["diagnostics"]
+            
+            c1, c2, c3 = st.columns(3)
+            c1.metric("Duplicate Groups", sm_metrics.get("duplicate_groups", 0))
+            c2.metric("Rows Analysed", sm_metrics.get("rows_analysed", 0))
+            c3.metric("Better Matches Found", sm_metrics.get("potential_better_match", 0))
+            
+            st.write(f"- **No Impact (Current = Best):** {sm_metrics.get('no_impact', 0)}")
+            st.write(f"- **Modified → No Change:** {sm_metrics.get('modified_to_nochange', 0)}")
+            st.write(f"- **Modified → Different Modified:** {sm_metrics.get('modified_to_different_modified', 0)}")
+            
+            if sm_diags.get("excel_bytes"):
+                st.download_button(
+                    label="Download Smart Re-Match Analysis 📊",
+                    data=sm_diags["excel_bytes"],
+                    file_name="SMART_REMATCH_ANALYSIS.xlsx",
+                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                    use_container_width=True
+                )
 
     # ══════════════════════════════════════════════════════════════════════════════
     # FILTERS (lightweight — no dataframe rendering here)

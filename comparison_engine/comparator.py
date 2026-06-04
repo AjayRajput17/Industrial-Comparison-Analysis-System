@@ -276,6 +276,46 @@ def compare_datasets(old_df, new_df):
 
     timer.stop("Set Math + Matching")
 
+    # ── DUPLICATE GROUP RESCUE (before DataFrame build) ───────────────────────
+    import config.duplicate_group_rescue_config as dgr_config
+    if dgr_config.ENABLE_DUPLICATE_GROUP_RESCUE:
+        timer.start("Duplicate Group Rescue")
+        from comparison_engine.duplicate_group_rescue import rescue_duplicate_groups
+
+        dgr_result = rescue_duplicate_groups(old_groups, new_groups, compare_cols)
+        replaced_keys = dgr_result["replaced_keys"]
+
+        if replaced_keys:
+            # Build a key-rebuilder to identify which positional rows to remove
+            from config.comparison_identity import IDENTITY_COLUMNS
+
+            def _row_key(rd):
+                parts = []
+                for col in IDENTITY_COLUMNS:
+                    v = rd.get(col, "")
+                    if v is None or (isinstance(v, float) and np.isnan(v)):
+                        v = ""
+                    v = str(v).strip().upper()
+                    if v.endswith(".0"):
+                        v = v[:-2]
+                    parts.append(v)
+                return "|".join(parts)
+
+            # Remove positional results for rescued groups
+            modified_rows = [r for r in modified_rows if _row_key(r) not in replaced_keys]
+            nochange_rows = [r for r in nochange_rows if _row_key(r) not in replaced_keys]
+            extra_new_rows = [r for r in extra_new_rows if _row_key(r) not in replaced_keys]
+            extra_deleted_rows = [r for r in extra_deleted_rows if _row_key(r) not in replaced_keys]
+
+            # Splice in rescue results
+            modified_rows.extend(dgr_result["rescued_modified"])
+            nochange_rows.extend(dgr_result["rescued_nochange"])
+            extra_new_rows.extend(dgr_result["rescued_extra_new"])
+            extra_deleted_rows.extend(dgr_result["rescued_extra_del"])
+
+        comp_diagnostics["duplicate_group_rescue"] = dgr_result["diagnostics"]
+        timer.stop("Duplicate Group Rescue")
+
     # ── Build output DataFrames ────────────────────────────────────────────────
     timer.start("Output DataFrame Build")
     modified_df = pd.DataFrame(modified_rows) if modified_rows else pd.DataFrame()
@@ -325,6 +365,15 @@ def compare_datasets(old_df, new_df):
     )
     comp_diagnostics["actionability"] = action_diags
     timer.stop("Actionability Classification")
+
+    # ── SMART RE-MATCH ANALYSIS (optional, analytical only) ───────────────────
+    from config.smart_rematch_config import SMART_REMATCH_ANALYSIS_ENABLED
+    if SMART_REMATCH_ANALYSIS_ENABLED:
+        timer.start("Smart Re-Match Analysis")
+        from analysis.smart_rematch_simulator import run_smart_rematch_analysis
+        rematch_result = run_smart_rematch_analysis(old_groups, new_groups, compare_cols)
+        comp_diagnostics["smart_rematch"] = rematch_result
+        timer.stop("Smart Re-Match Analysis")
 
     comp_diagnostics["modified_count"] = len(modified_df)
     comp_diagnostics["nochange_count"] = len(nochange_df)

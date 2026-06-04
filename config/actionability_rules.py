@@ -38,19 +38,19 @@ ACTIONABLE_FIELDS = [
     "TRGT2",
     "TORQUE SNUG TARGET",
     "TORQUE STRATEGY",
-    "TORQUE SAFETY",
-    "TIGHTENING CLASS",
     # Applicability
     "ENGINE",
-    "TRANSMISSION",
-    "VEH LINE",
-    "DEPT_REL",
+    "TRANSMISSION"
 ]
 
 # ── ADMINISTRATIVE FIELDS ────────────────────────────────────────────────────
 # If ONLY these fields changed, the modification is non-actionable (ACTION = NO).
 ADMINISTRATIVE_FIELDS = [
     "BODY STYLE",
+    "VEH LINE",
+    "DEPT_REL",
+    "TORQUE SAFETY",
+    "TIGHTENING CLASS",
     "VSC",
     "VSC NAME",
     "CONDITION DESC",
@@ -68,10 +68,14 @@ ADMINISTRATIVE_FIELDS = [
 REVIEW_CATEGORIES = {
     "LOW_TORQUE":     "Low Torque Change",
     "ADMIN":          "Administrative Change",
+    "TRGT":           "TRGT Change",
     "TORQUE":         "Torque Change",
     "ENGINE":         "Engine Applicability Change",
     "TRANSMISSION":   "Transmission Applicability Change",
     "APPLICABILITY":  "Vehicle/Department Applicability Change",
+    "TORQUE_STRATEGY" : "Torque Strategy Change",
+    "TORQUE_SAFETY" : "Torque Safety Change",
+    "TORQUE_TIGHTENING_CLASS" : "Torque Tightening Class Change",
     "NEW":            "New Engineering Record",
     "NEW_LOW_TORQUE": "New Low Torque Record",
 }
@@ -80,10 +84,14 @@ REVIEW_CATEGORIES = {
 # When multiple categories apply, the FIRST matching category (highest
 # priority) wins. This list controls evaluation order.
 CATEGORY_PRIORITY = [
+    "TRGT",
     "TORQUE",
     "LOW_TORQUE",
     "ENGINE",
     "TRANSMISSION",
+    "TORQUE_STRATEGY",
+    "TORQUE_SAFETY",
+    "TORQUE_TIGHTENING_CLASS",
     "APPLICABILITY",
     "ADMIN",
     "NEW"
@@ -96,12 +104,12 @@ FIELD_CATEGORY_MAP = {
     "TRANSMISSION":       "TRANSMISSION",
     "VEH LINE":           "APPLICABILITY",
     "DEPT_REL":           "APPLICABILITY",
-    "TRGT":               "TORQUE",
+    "TRGT":               "TRGT",
     "MIN":                "TORQUE",
     "MAX":                "TORQUE",
     "TRGT2":              "TORQUE",
     "TORQUE SNUG TARGET": "TORQUE",
-    "TORQUE STRATEGY":    "TORQUE",
-    "TORQUE SAFETY":      "TORQUE",
-    "TIGHTENING CLASS":   "TORQUE",
+    "TORQUE STRATEGY":    "TORQUE_STRATEGY",
+    "TORQUE SAFETY":      "TORQUE_SAFETY",
+    "TIGHTENING CLASS":   "TORQUE_TIGHTENING_CLASS",
 }

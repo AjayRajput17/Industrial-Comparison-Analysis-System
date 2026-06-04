@@ -190,17 +190,19 @@ def classify_modified_actionability(modified_df):
         cat_counts[cat_label] = cat_counts.get(cat_label, 0) + 1
 
         # Determine action required
-        if cat_id == "ADMIN":
-            actions.append("NO")
-            admin_count += 1
-        elif cat_id == "LOW_TORQUE":
+        if cat_id == "LOW_TORQUE":
             actions.append("NO")
             low_torque_count += 1
-        else:
+        elif not changed_fields.isdisjoint(actionable_set):
+            # At least one ACTIONABLE_FIELD changed
             actions.append("YES")
-            # Track threshold crossings
             if _is_threshold_crossing(changes):
                 threshold_crossing_count += 1
+        else:
+            # NO actionable fields changed -> NO Action Required
+            actions.append("NO")
+            if changed_fields and changed_fields.issubset(admin_set):
+                admin_count += 1
 
     modified_df = modified_df.copy()
     modified_df["ACTION REQUIRED"] = actions
