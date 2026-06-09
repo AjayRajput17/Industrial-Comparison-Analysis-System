@@ -76,7 +76,7 @@ st.sidebar.caption(f"Logged in as: `{st.session_state.get('username')}`")
 
 st.sidebar.divider()
 st.sidebar.markdown("### 🧭 Navigation")
-page = st.sidebar.radio("Go to", ["Comparison Engine", "Report Generation"], label_visibility="collapsed")
+page = st.sidebar.radio("Go to", ["Report Generation", "Comparison Engine"], label_visibility="collapsed")
 st.sidebar.divider()
 
 authenticator.logout("🚪 Logout", "sidebar")
